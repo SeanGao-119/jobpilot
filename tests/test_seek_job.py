@@ -31,6 +31,28 @@ HTML = """
 </head></html>
 """
 
+EMBEDDED_HTML = """
+<html><head>
+<script id="__NEXT_DATA__" type="application/json">
+{
+  "props": {
+    "pageProps": {
+      "job": {
+        "title": "Platform Engineer",
+        "advertiser": {"description": "Younity"},
+        "location": "Rosedale, Auckland",
+        "workType": "Contract/Temp",
+        "salaryLabel": "$110 - $130 per hour",
+        "content": "<div><p>Own Windows Server deployment automation and configuration management.</p><p>Work with a growing technology business across infrastructure and release tooling.</p></div>",
+        "listedAt": "2026-08-16T01:00:00Z"
+      }
+    }
+  }
+}
+</script>
+</head></html>
+"""
+
 
 def test_parse_seek_job_page_from_json_ld() -> None:
     job = parse_seek_job_page(HTML, source_url="https://www.seek.co.nz/job/12345678")
@@ -43,3 +65,16 @@ def test_parse_seek_job_page_from_json_ld() -> None:
     assert job.salary_text == "NZD 130000-150000 YEAR"
     assert "data pipelines" in job.description
     assert "Python" in job.description
+
+
+def test_parse_seek_job_page_from_embedded_application_json() -> None:
+    job = parse_seek_job_page(EMBEDDED_HTML, source_url="https://nz.seek.com/job/87654321")
+
+    assert job.seek_job_id == "87654321"
+    assert job.title == "Platform Engineer"
+    assert job.company == "Younity"
+    assert job.location == "Rosedale, Auckland"
+    assert job.employment_type == "Contract/Temp"
+    assert job.salary_text == "$110 - $130 per hour"
+    assert "Windows Server" in job.description
+    assert job.date_posted == "2026-08-16T01:00:00Z"
