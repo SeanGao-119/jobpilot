@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Mapping
+
+import httpx
 
 from services.analysis.requirements import ExtractedRequirements, extract_requirements
 from services.ingestion.models import JobRecommendation
@@ -169,7 +171,7 @@ def rank_seek_email(
             item = future_map[future]
             try:
                 jobs.append(future.result())
-            except Exception as exc:  # network/parser failure must not abort the batch
+            except (httpx.HTTPError, ValueError, OSError) as exc:
                 failures.append(
                     RankFailure(
                         external_id=item.external_id,
