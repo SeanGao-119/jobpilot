@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from services.ingestion.seek_job import fetch_seek_job
 from services.ingestion.seek_link import resolve_seek_tracking_url
 from services.matching.scorer import score_job
 from services.pipeline.rank_email import rank_seek_email
+from services.storage.postgres import PostgresJobRepository
 
 
 def _load_json(path: str) -> dict:
@@ -21,6 +24,11 @@ def _load_json(path: str) -> dict:
 
 def _load_profile(path: str) -> dict:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+
+
+def _profile_version(path: str) -> str:
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
+    return f"sha256:{digest}"
 
 
 def _cmd_parse_email(args: argparse.Namespace) -> int:
@@ -52,7 +60,7 @@ def _cmd_fetch_job(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_rank_email(args: argparse.Namespace) -> int:
+def _rank_from_args(args: argparse.Namespace):
     payload = _load_json(args.input)
     profile = _load_profile(args.profile)
     result = rank_seek_email(
@@ -62,11 +70,46 @@ def _cmd_rank_email(args: argparse.Namespace) -> int:
         profile=profile,
         max_workers=args.workers,
     )
+    return payload, result
+
+
+def _cmd_rank_email(args: argparse.Namespace) -> int:
+    _, result = _rank_from_args(args)
     output = asdict(result)
     if args.top is not None:
         output["jobs"] = output["jobs"][: args.top]
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if result.ranked_count else 2
+
+
+def _cmd_persist_email(args: argparse.Namespace) -> int:
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        raise SystemExit("DATABASE_URL is required for persist-email")
+
+    payload, result = _rank_from_args(args)
+    if not result.ranked_count:
+        print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+        return 2
+
+    profile_version = _profile_version(args.profile)
+    repository = PostgresJobRepository(database_url)
+    job_ids = repository.persist_batch(
+        result,
+        source_message_id=payload.get("message_id"),
+        profile_version=profile_version,
+        prompt_version="deterministic-v1",
+    )
+    output = {
+        "profile_version": profile_version,
+        "ranked_count": result.ranked_count,
+        "failed_count": result.failed_count,
+        "persisted_count": len(job_ids),
+        "job_ids": job_ids,
+        "failures": [asdict(item) for item in result.failures],
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
 
 
 def _cmd_score(args: argparse.Namespace) -> int:
@@ -85,6 +128,12 @@ def _cmd_score(args: argparse.Namespace) -> int:
     )
     print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
     return 0
+
+
+def _add_rank_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("input", help="JSON with subject, body, and optional message_id")
+    parser.add_argument("--profile", default="resume/facts/profile.yaml")
+    parser.add_argument("--workers", type=int, default=4)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,11 +161,15 @@ def build_parser() -> argparse.ArgumentParser:
     rank_email = subparsers.add_parser(
         "rank-email", help="Resolve and rank all jobs in a SEEK recommendation email"
     )
-    rank_email.add_argument("input", help="JSON with subject, body, and optional message_id")
-    rank_email.add_argument("--profile", default="resume/facts/profile.yaml")
-    rank_email.add_argument("--workers", type=int, default=4)
+    _add_rank_arguments(rank_email)
     rank_email.add_argument("--top", type=int)
     rank_email.set_defaults(func=_cmd_rank_email)
+
+    persist_email = subparsers.add_parser(
+        "persist-email", help="Rank a SEEK recommendation email and upsert results into PostgreSQL"
+    )
+    _add_rank_arguments(persist_email)
+    persist_email.set_defaults(func=_cmd_persist_email)
 
     score = subparsers.add_parser(
         "score", help="Score structured job requirements against the fact registry"
