@@ -6,8 +6,19 @@ from dataclasses import dataclass
 from .models import JobRecommendation, dedupe_recommendations
 
 _LINK_RE = re.compile(r"\[(?P<label>.*?)\]\((?P<url>https?://[^)]+)\)", re.DOTALL)
-_SUBJECT_RE = re.compile(r"^(?P<title>.+?)(?:\s+\+\s+(?P<count>\d+)\s+new jobs?)?$", re.I)
-_LOCATION_HINTS = ("Auckland", "Wellington", "Christchurch", "Hamilton", "Tauranga", "Dunedin", "Remote")
+_SUBJECT_RE = re.compile(
+    r"^(?P<title>.+?)(?:\s+\+\s+(?P<count>\d+)\s+new jobs?)?$",
+    re.IGNORECASE,
+)
+_LOCATION_HINTS = (
+    "Auckland",
+    "Wellington",
+    "Christchurch",
+    "Hamilton",
+    "Tauranga",
+    "Dunedin",
+    "Remote",
+)
 _SKIP_LABELS = (
     "view more jobs",
     "how recommendations work",
@@ -34,7 +45,7 @@ def parse_subject(subject: str) -> tuple[str | None, int | None]:
 
 
 def _clean_lines(label: str) -> list[str]:
-    cleaned = re.sub(r"\[?logo\]?", "", label, flags=re.I)
+    cleaned = re.sub(r"\[?logo\]?", "", label, flags=re.IGNORECASE)
     lines: list[str] = []
     for raw in cleaned.splitlines():
         line = raw.strip(" \t-*•")
@@ -56,7 +67,9 @@ def _looks_like_job(label: str, url: str) -> bool:
     return any(hint.lower() in " ".join(lines).lower() for hint in _LOCATION_HINTS)
 
 
-def _split_metadata(lines: list[str]) -> tuple[str, str | None, str | None, str | None, tuple[str, ...]]:
+def _split_metadata(
+    lines: list[str],
+) -> tuple[str, str | None, str | None, str | None, tuple[str, ...]]:
     company = lines[0]
     location = lines[1] if len(lines) > 1 else None
     salary: str | None = None
@@ -64,7 +77,11 @@ def _split_metadata(lines: list[str]) -> tuple[str, str | None, str | None, str 
     highlights: list[str] = []
 
     if location:
-        paren = re.search(r"\((Hybrid|Remote|On-site|Onsite)\)", location, re.I)
+        paren = re.search(
+            r"\((Hybrid|Remote|On-site|Onsite)\)",
+            location,
+            re.IGNORECASE,
+        )
         if paren:
             arrangement = paren.group(1).replace("Onsite", "On-site")
 
