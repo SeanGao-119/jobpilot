@@ -43,7 +43,7 @@ def _resolver(url: str) -> ResolvedSeekLink:
 
 def _fetcher(url: str) -> SeekJobPage:
     if url.endswith("33333333"):
-        raise RuntimeError("synthetic fetch failure")
+        raise ValueError("synthetic fetch failure")
     if url.endswith("11111111"):
         return SeekJobPage(
             source_url=url,
