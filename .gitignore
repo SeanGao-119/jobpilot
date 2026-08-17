@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Generated application artifacts
+resume/generated/**
+!resume/generated/.gitkeep
+
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.xdv
+
+# Local font binaries: do not commit
+resume/master/fonts/
+*.ttf
+*.otf
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
