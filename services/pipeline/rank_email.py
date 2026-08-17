@@ -28,6 +28,7 @@ class RankedSeekJob:
     location: str | None
     salary_text: str | None
     employment_type: str | None
+    description: str
     requirements: ExtractedRequirements
     match: MatchScore
 
@@ -140,6 +141,7 @@ def _rank_one(
         location=job.location or recommendation.location,
         salary_text=job.salary_text or recommendation.salary_text,
         employment_type=job.employment_type,
+        description=job.description,
         requirements=requirements,
         match=match,
     )
