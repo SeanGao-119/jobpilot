@@ -7,7 +7,10 @@ from pathlib import Path
 
 import yaml
 
+from services.analysis.requirements import extract_requirements
 from services.ingestion.seek_email import parse_seek_recommendation_email
+from services.ingestion.seek_job import fetch_seek_job
+from services.ingestion.seek_link import resolve_seek_tracking_url
 from services.matching.scorer import score_job
 
 
@@ -23,6 +26,24 @@ def _cmd_parse_email(args: argparse.Namespace) -> int:
         message_id=payload.get("message_id"),
     )
     print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_resolve_url(args: argparse.Namespace) -> int:
+    result = resolve_seek_tracking_url(args.url)
+    print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_fetch_job(args: argparse.Namespace) -> int:
+    resolved = resolve_seek_tracking_url(args.url)
+    job = fetch_seek_job(resolved.final_url)
+    requirements = extract_requirements(job.description)
+    payload = {
+        "job": asdict(job),
+        "requirements": asdict(requirements),
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -48,11 +69,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jobpilot")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    parse_email = subparsers.add_parser("parse-email", help="Parse a SEEK recommendation email JSON export")
+    parse_email = subparsers.add_parser(
+        "parse-email", help="Parse a SEEK recommendation email JSON export"
+    )
     parse_email.add_argument("input", help="JSON with subject, body, and optional message_id")
     parse_email.set_defaults(func=_cmd_parse_email)
 
-    score = subparsers.add_parser("score", help="Score structured job requirements against the fact registry")
+    resolve_url = subparsers.add_parser(
+        "resolve-url", help="Resolve a SEEK recommendation tracking URL"
+    )
+    resolve_url.add_argument("url")
+    resolve_url.set_defaults(func=_cmd_resolve_url)
+
+    fetch_job = subparsers.add_parser(
+        "fetch-job", help="Resolve, fetch, and parse a SEEK job page"
+    )
+    fetch_job.add_argument("url")
+    fetch_job.set_defaults(func=_cmd_fetch_job)
+
+    score = subparsers.add_parser(
+        "score", help="Score structured job requirements against the fact registry"
+    )
     score.add_argument("requirements", help="JSON with required_skills and preferred_skills")
     score.add_argument("--profile", default="resume/facts/profile.yaml")
     score.set_defaults(func=_cmd_score)
