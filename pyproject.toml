@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jobpilot"
-version = "0.2.0"
+version = "0.2.1"
 description = "AI-assisted job discovery, matching, resume tailoring, and application tracking"
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +19,12 @@ dev = [
 
 [project.scripts]
 jobpilot = "services.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["services", "services.*"]
+exclude = ["tests", "tests.*", "resume", "resume.*", "prompts", "database"]
+namespaces = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
