@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-_ALLOWED_HOSTS = {"seek.co.nz", "www.seek.co.nz", "email.s.seek.co.nz"}
+_SEEK_ROOT_DOMAIN = "seek.co.nz"
 _JOB_ID_RE = re.compile(r"/job/(?P<job_id>\d+)")
 
 
@@ -22,13 +22,17 @@ class ResolvedSeekLink:
 
 
 def _host_is_allowed(host: str | None) -> bool:
-    return bool(host and host.lower() in _ALLOWED_HOSTS)
+    if not host:
+        return False
+    normalized = host.lower().rstrip(".")
+    return normalized == _SEEK_ROOT_DOMAIN or normalized.endswith(f".{_SEEK_ROOT_DOMAIN}")
 
 
 def validate_seek_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not _host_is_allowed(parsed.hostname):
-        raise SeekUrlError("Only SEEK URLs are allowed")
+        host = parsed.hostname or "<missing>"
+        raise SeekUrlError(f"Only SEEK URLs are allowed (rejected host: {host})")
 
 
 def extract_seek_job_id(url: str) -> str:
@@ -42,8 +46,8 @@ def extract_seek_job_id(url: str) -> str:
 def resolve_seek_tracking_url(url: str, *, timeout: float = 15.0) -> ResolvedSeekLink:
     """Resolve a SEEK recommendation tracking URL to the canonical job page.
 
-    The initial and final hosts are validated so this helper cannot be used as a
-    generic redirect fetcher when later exposed through an API endpoint.
+    The initial and final hosts are constrained to seek.co.nz and its subdomains so
+    this helper cannot be used as a generic redirect fetcher when exposed through an API.
     """
     validate_seek_url(url)
     headers = {
