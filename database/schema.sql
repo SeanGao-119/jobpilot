@@ -72,7 +72,9 @@ create table if not exists job_matches (
   partial_evidence jsonb not null default '[]'::jsonb,
   gaps jsonb not null default '[]'::jsonb,
   explanation text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+
+  unique(job_id, profile_version)
 );
 
 create index if not exists job_matches_job_id_idx on job_matches(job_id);
