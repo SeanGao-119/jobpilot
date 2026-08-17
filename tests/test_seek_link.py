@@ -12,6 +12,15 @@ def test_tracking_host_is_allowed() -> None:
     validate_seek_url("https://email.s.seek.co.nz/uni/ss/c/example")
 
 
+def test_nested_seek_subdomain_is_allowed() -> None:
+    validate_seek_url("https://tracking.email.s.seek.co.nz/redirect/example")
+
+
 def test_non_seek_host_is_rejected() -> None:
-    with pytest.raises(SeekUrlError):
+    with pytest.raises(SeekUrlError, match="example.com"):
         validate_seek_url("https://example.com/job/12345678")
+
+
+def test_lookalike_seek_host_is_rejected() -> None:
+    with pytest.raises(SeekUrlError):
+        validate_seek_url("https://seek.co.nz.example.com/job/12345678")
