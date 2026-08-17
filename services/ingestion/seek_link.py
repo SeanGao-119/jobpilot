@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-_SEEK_ROOT_DOMAIN = "seek.co.nz"
+_SEEK_ROOT_DOMAINS = ("seek.co.nz", "seek.com")
 _JOB_ID_RE = re.compile(r"/job/(?P<job_id>\d+)")
 
 
@@ -25,7 +25,10 @@ def _host_is_allowed(host: str | None) -> bool:
     if not host:
         return False
     normalized = host.lower().rstrip(".")
-    return normalized == _SEEK_ROOT_DOMAIN or normalized.endswith(f".{_SEEK_ROOT_DOMAIN}")
+    return any(
+        normalized == root_domain or normalized.endswith(f".{root_domain}")
+        for root_domain in _SEEK_ROOT_DOMAINS
+    )
 
 
 def validate_seek_url(url: str) -> None:
@@ -46,8 +49,8 @@ def extract_seek_job_id(url: str) -> str:
 def resolve_seek_tracking_url(url: str, *, timeout: float = 15.0) -> ResolvedSeekLink:
     """Resolve a SEEK recommendation tracking URL to the canonical job page.
 
-    The initial and final hosts are constrained to seek.co.nz and its subdomains so
-    this helper cannot be used as a generic redirect fetcher when exposed through an API.
+    The initial and final hosts are constrained to SEEK-owned domains so this helper
+    cannot be used as a generic redirect fetcher when exposed through an API.
     """
     validate_seek_url(url)
     headers = {
