@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from services.ingestion.seek_job import parse_seek_job_page
 
 
