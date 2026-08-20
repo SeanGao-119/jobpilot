@@ -62,11 +62,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
       <section className="actionBar">
         <form action={requestDocument.bind(null, id, "resume")}>
-          <button className="primaryButton" type="submit">Generate Resume</button>
+          <button className="primaryButton" type="submit">{job.resume_path ? "Regenerate Resume" : "Generate Resume"}</button>
         </form>
         <form action={requestDocument.bind(null, id, "cover_letter")}>
-          <button className="button" type="submit">Generate Cover Letter</button>
+          <button className="button" type="submit">{job.cover_letter_path ? "Regenerate Cover Letter" : "Generate Cover Letter"}</button>
         </form>
+        {job.resume_path && <a className="button" href={job.resume_path} target="_blank" rel="noreferrer">Resume PDF ↗</a>}
+        {job.cover_letter_path && <a className="button" href={job.cover_letter_path} target="_blank" rel="noreferrer">Cover Letter PDF ↗</a>}
         {job.status !== "applied" ? (
           <form action={markApplied.bind(null, id)}>
             <button className="button" type="submit">Mark as Applied</button>
@@ -88,6 +90,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <span>Work rights<strong>{score(job.work_rights_score)}</strong></span>
           </div>
           {job.explanation && <p className="detailText">{job.explanation}</p>}
+          {job.generated_at && <p className="muted">Documents last generated: {new Date(job.generated_at).toLocaleString("en-NZ")}</p>}
         </article>
 
         <article className="detailCard salaryCard">
