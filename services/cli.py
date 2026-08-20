@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import yaml
+from psycopg.conninfo import make_conninfo
 
 from services.analysis.requirements import extract_requirements
 from services.ingestion.seek_email import parse_seek_recommendation_email
@@ -33,9 +34,56 @@ def _profile_version(path: str) -> str:
 
 def _database_url() -> str:
     database_url = os.environ.get("DATABASE_URL", "").strip()
-    if not database_url:
-        raise SystemExit("DATABASE_URL is required for this command")
-    return database_url
+
+    host = os.environ.get("DB_HOST", "").strip()
+    port = os.environ.get("DB_PORT", "5432").strip() or "5432"
+    dbname = os.environ.get("DB_NAME", "postgres").strip() or "postgres"
+    user = os.environ.get("DB_USER", "").strip()
+    password = os.environ.get("DB_PASSWORD", "")
+
+    split_config_touched = any(
+        os.environ.get(name)
+        for name in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+    )
+
+    if split_config_touched:
+        missing = [
+            name
+            for name, value in (
+                ("DB_HOST", host),
+                ("DB_USER", user),
+                ("DB_PASSWORD", password),
+            )
+            if not value
+        ]
+        if missing:
+            raise SystemExit(
+                "Incomplete DB_* configuration. Missing: " + ", ".join(missing)
+            )
+
+        try:
+            parsed_port = int(port)
+        except ValueError as exc:
+            raise SystemExit("DB_PORT must be a valid integer") from exc
+        if parsed_port <= 0:
+            raise SystemExit("DB_PORT must be a positive integer")
+
+        return make_conninfo(
+            host=host,
+            port=parsed_port,
+            dbname=dbname,
+            user=user,
+            password=password,
+            sslmode="require",
+        )
+
+    if database_url:
+        return database_url
+
+    raise SystemExit(
+        "Database configuration is required. Prefer DB_HOST/DB_USER/DB_PASSWORD "
+        "(plus optional DB_PORT/DB_NAME), or set DATABASE_URL."
+    )
 
 
 def _cmd_parse_email(args: argparse.Namespace) -> int:
