@@ -34,6 +34,7 @@ export type JobDetail = {
   salary_confidence: string | null;
   salary_comparable_count: number | null;
   salary_rationale: string | null;
+  salary_evidence: unknown;
 };
 
 export async function getJobDetail(id: string): Promise<JobDetail | null> {
@@ -78,7 +79,8 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       s.period as salary_period,
       s.confidence as salary_confidence,
       s.comparable_count as salary_comparable_count,
-      s.rationale as salary_rationale
+      s.rationale as salary_rationale,
+      s.evidence as salary_evidence
     from jobs j
     join latest_match lm on lm.job_id = j.id
     left join applications a on a.job_id = j.id
