@@ -1,5 +1,3 @@
-export type JsonObject = Record<string, unknown>;
-
 export type AiProviderName = "deepseek" | "openai-compatible";
 
 export type AiJsonRequest = {
@@ -29,7 +27,7 @@ export function aiProviderName(): AiProviderName {
   return "openai-compatible";
 }
 
-export async function generateJson<T extends JsonObject>(request: AiJsonRequest): Promise<T> {
+export async function generateJson<T>(request: AiJsonRequest): Promise<T> {
   const provider = aiProviderName();
   const apiKey = provider === "deepseek"
     ? requiredEnv("DEEPSEEK_API_KEY")
