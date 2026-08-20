@@ -26,6 +26,9 @@ export type JobDetail = {
   explanation: string | null;
   status: string;
   applied_at: string | null;
+  resume_path: string | null;
+  cover_letter_path: string | null;
+  generated_at: string | null;
   salary_estimate_min: number | null;
   salary_estimate_max: number | null;
   salary_recommended_ask: number | null;
@@ -72,6 +75,9 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       lm.explanation,
       coalesce(a.status::text, 'discovered') as status,
       a.applied_at::text,
+      a.resume_path,
+      a.cover_letter_path,
+      a.generated_at::text,
       s.estimate_min::float8 as salary_estimate_min,
       s.estimate_max::float8 as salary_estimate_max,
       s.recommended_ask::float8 as salary_recommended_ask,
