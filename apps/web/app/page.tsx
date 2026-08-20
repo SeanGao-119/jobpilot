@@ -16,9 +16,9 @@ export default async function HomePage() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">JOBPILOT</p>
+          <p className="eyebrow">JOBPILOT V0.2</p>
           <h1>Job search command centre</h1>
-          <p className="subtitle">Live SEEK recommendations ranked against your current profile.</p>
+          <p className="subtitle">Live SEEK recommendations, application state, document workflows and salary intelligence.</p>
         </div>
         <div className="live"><span />Live database</div>
       </header>
@@ -59,9 +59,7 @@ export default async function HomePage() {
               {jobs.map((job) => (
                 <tr key={job.id}>
                   <td><div className="score">{Math.round(Number(job.overall_score))}</div></td>
-                  <td className="role">
-                    {job.source_url ? <a href={job.source_url} target="_blank" rel="noreferrer">{job.title}</a> : job.title}
-                  </td>
+                  <td className="role"><a href={`/jobs/${job.id}`}>{job.title}</a></td>
                   <td>{job.company}</td>
                   <td className="muted">{job.location ?? "—"}</td>
                   <td><span className={`pill ${job.recommendation}`}>{job.recommendation}</span></td>
