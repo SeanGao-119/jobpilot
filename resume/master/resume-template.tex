@@ -1,0 +1,65 @@
+\documentclass[]{resume-openfont}
+
+\pagestyle{fancy}
+\resetHeaderAndFooter
+
+\newcommand{\resumeHeading}[4]{\runsubsection{\uppercase{#1}}\descript{ | #2}\hfill\location{#3 | #4}\fakeNewLine}
+\newcommand{\educationHeading}[5]{\runsubsection{#1}\hspace*{\fill}  \location{#3 | #4}\\
+\descript{#2}\hspace*{\fill} \descript{#5}\fakeNewLine}
+\newcommand{\projectHeadingNoLink}[3]{\ProjectNoLink{#1}\location{#2 | #3}\\}
+\newcommand{\eduConcentration}[1]{\textbf{Concentration:} #1}
+\newcommand{\courseWork}[1]{\textbf{Coursework:} #1}
+\newcommand{\scholarship}[1]{\textbf{Scholarship:} #1}
+
+\begin{document}
+
+\newcommand{\yourName}{Zilin(Sean) Gao}
+\newcommand{\yourEmail}{therinkao@gmail.com}
+\newcommand{\yourPhone}{+64 (022) 091 1240}
+\newcommand{\githubUserName}{SeanGao-119}
+\newcommand{\linkedInUserName}{seangao-kun}
+
+\begin{center}
+    \Huge \scshape \latoRegular{\yourName} \\ \vspace{1pt}
+    \small \href{mailto:\yourEmail}{\underline{therinkao@gmail.com}}  $|$
+    \href{tel:\yourPhone}{\underline{+64 (022) 091 1240}} $|$
+    \href{https://github.com/\githubUserName}{\underline{Github}} $|$
+    \href{https://www.linkedin.com/in/\linkedInUserName}{\underline{LinkedIn}}
+\end{center}
+
+\section{Summary}
+%%SUMMARY%%
+\sectionsep
+
+\section{Work Experience}
+%%EXPERIENCE%%
+
+\section{Projects}
+%%PROJECTS%%
+
+\section{Education}
+\educationHeading{Master of Applied Data Science}{University of Canterbury}{Christchurch, New Zealand}{Jul 2024 -- Feb 2026}{}\\
+\eduConcentration{Data Engineering, Machine Learning, Database Systems, Data Visualization}\\
+\courseWork{Contemporary Issues in Data Science (A), Foundations of Deep Learning (A), Data Analytics and Business Intelligence (A), Computational Social Choice (A-), Scalable Data Science, Artificial Intelligence in Business, Geographic Information Systems}
+\sectionsep
+
+\educationHeading{Graduate Diploma in Science}{University of Canterbury}{Christchurch, New Zealand}{Jul 2023 -- Jun 2024}{}\\
+\eduConcentration{Algorithms \& Data Structures, Probability \& Inference, Statistical Computing}\\
+\courseWork{Data Collection and Sampling Methods, Multivariable Statistical Methods and Applications}
+\sectionsep
+
+\educationHeading{Bachelor of Computer Science}{Shanghai Business School}{Shanghai, China}{Sep 2017 -- Jun 2021}{}\\
+\eduConcentration{Software Engineering, Operating Systems, Computer Networks}\\
+\courseWork{Java Programming, Web Development, Data Structures, Internet Computing}\\
+\scholarship{First-Class Scholarship for Academic Merit}
+\sectionsep
+
+\section{Skills}
+%%SKILLS%%
+\sectionsep
+
+\section{Languages}
+Mandarin Chinese (native), English (professional working proficiency)
+\sectionsep
+
+\end{document}
