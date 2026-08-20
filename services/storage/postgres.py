@@ -67,6 +67,28 @@ on conflict (job_id, profile_version) do update set
 returning id
 """
 
+_MARK_APPLIED_SQL = """
+with target_job as (
+  select id
+  from jobs
+  where lower(company) = lower(%(company)s)
+    and lower(title) = lower(%(title)s)
+  order by discovered_at desc
+  limit 1
+), upserted as (
+  insert into applications (job_id, status, applied_at, application_method, updated_at)
+  select id, 'applied'::application_status, now(), %(application_method)s, now()
+  from target_job
+  on conflict (job_id) do update set
+    status = 'applied'::application_status,
+    applied_at = coalesce(applications.applied_at, now()),
+    application_method = coalesce(excluded.application_method, applications.application_method),
+    updated_at = now()
+  returning id, job_id, applied_at
+)
+select id, job_id, applied_at from upserted
+"""
+
 
 def _jsonb_fields(record: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
     payload = dict(record)
@@ -76,7 +98,7 @@ def _jsonb_fields(record: dict[str, Any], fields: tuple[str, ...]) -> dict[str, 
 
 
 class PostgresJobRepository:
-    """Persist ranked jobs into PostgreSQL using idempotent upserts."""
+    """Persist ranked jobs and application state into PostgreSQL."""
 
     def __init__(self, database_url: str, *, connect: ConnectFn = psycopg.connect) -> None:
         if not database_url.strip():
@@ -106,6 +128,49 @@ class PostgresJobRepository:
                     )
                 )
         return tuple(job_ids)
+
+    def mark_applied_by_company_title(
+        self,
+        *,
+        company: str,
+        title: str,
+        application_method: str = "seek",
+    ) -> dict[str, str]:
+        """Mark the newest matching job as applied and record an application event."""
+        with self._connect(self.database_url) as conn:
+            row = conn.execute(
+                _MARK_APPLIED_SQL,
+                {
+                    "company": company,
+                    "title": title,
+                    "application_method": application_method,
+                },
+            ).fetchone()
+            if not row:
+                raise ValueError(f"No matching job found for {company} / {title}")
+
+            application_id, job_id, applied_at = row
+            conn.execute(
+                """
+                insert into application_events (
+                  application_id, event_type, to_status, source, details, occurred_at
+                ) values (
+                  %s, 'application_submitted', 'applied'::application_status,
+                  'manual', %s, %s
+                )
+                """,
+                (
+                    application_id,
+                    Jsonb({"application_method": application_method}),
+                    applied_at,
+                ),
+            )
+            return {
+                "application_id": str(application_id),
+                "job_id": str(job_id),
+                "status": "applied",
+                "applied_at": applied_at.isoformat(),
+            }
 
     @staticmethod
     def _persist_job(
