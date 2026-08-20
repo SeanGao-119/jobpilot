@@ -14,19 +14,25 @@ const sharedOptions = {
   connect_timeout: 10,
 };
 
-if (host && username && password) {
-  export const sql = postgres({
-    host,
-    port,
-    database,
-    username,
-    password,
-    ...sharedOptions,
-  });
-} else if (connectionString) {
-  export const sql = postgres(connectionString, sharedOptions);
-} else {
+function createSqlClient() {
+  if (host && username && password) {
+    return postgres({
+      host,
+      port,
+      database,
+      username,
+      password,
+      ...sharedOptions,
+    });
+  }
+
+  if (connectionString) {
+    return postgres(connectionString, sharedOptions);
+  }
+
   throw new Error(
     "Database configuration is required. Set DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD.",
   );
 }
+
+export const sql = createSqlClient();
