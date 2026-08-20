@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getJobDetail } from "../../../lib/jobs";
-import { markApplied, requestDocument } from "./actions";
+import { markApplied, refreshSalaryIntelligence, requestDocument } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -96,10 +96,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           ) : (
             <>
               <div className="salaryRange">Not calculated</div>
-              <p className="muted">V0.2 schema is ready. Live market-search calculation is the next service to connect.</p>
+              <p className="muted">Search current NZ comparable roles and estimate a defensible market range.</p>
             </>
           )}
           {job.salary_text && <p className="detailText">Advertised: {job.salary_text}</p>}
+          <form action={refreshSalaryIntelligence.bind(null, id)}>
+            <button className="button" type="submit">{hasSalaryEstimate ? "Refresh salary estimate" : "Calculate salary estimate"}</button>
+          </form>
         </article>
       </section>
 
