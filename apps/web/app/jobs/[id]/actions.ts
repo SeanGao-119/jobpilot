@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { aiProviderName, generateJson } from "../../../lib/ai";
 import { sql } from "../../../lib/db";
+import { generateCoverLetter, generateResume } from "../../../lib/documents";
 import { searchProviderName, searchWeb } from "../../../lib/search";
 
 async function ensureApplication(jobId: string) {
@@ -53,6 +54,23 @@ export async function requestDocument(jobId: string, documentType: "resume" | "c
       ${JSON.stringify({ document_type: documentType, ai_provider: aiProviderName() })}::jsonb
     )
   `;
+
+  const result = documentType === "resume"
+    ? await generateResume(jobId)
+    : await generateCoverLetter(jobId);
+
+  await sql`
+    insert into application_events (
+      application_id, event_type, source, details
+    ) values (
+      ${applicationId}::uuid,
+      'document_generated',
+      'dashboard',
+      ${JSON.stringify({ document_type: documentType, ...result })}::jsonb
+    )
+  `;
+
+  revalidatePath("/");
   revalidatePath(`/jobs/${jobId}`);
 }
 
@@ -123,7 +141,7 @@ export async function refreshSalaryIntelligence(jobId: string) {
     limit 20
   `;
 
-  const query = `${job.title} ${job.location ?? "New Zealand"} salary jobs NZ SEEK`; 
+  const query = `${job.title} ${job.location ?? "New Zealand"} salary jobs NZ SEEK`;
   const webHits = await searchWeb(query, 12);
 
   const sourceRows = [
