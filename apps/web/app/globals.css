@@ -12,6 +12,7 @@ html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--te
 body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
+button { font: inherit; }
 .shell { width: min(1440px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 72px; }
 .topbar { display: flex; justify-content: space-between; gap: 32px; align-items: flex-start; margin-bottom: 32px; }
 .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 12px; letter-spacing: .18em; font-weight: 800; }
@@ -26,7 +27,7 @@ h1 { margin: 0; font-size: clamp(34px, 5vw, 58px); line-height: .98; letter-spac
 .metrics strong { margin-top: auto; font-size: 42px; line-height: 1; letter-spacing: -.04em; }
 .metrics small { margin-top: 8px; font-size: 12px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
-.panelHead { padding: 22px 24px; display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid var(--line); }
+.panelHead { padding: 22px 24px; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid var(--line); }
 .panelHead h2 { margin: 0; font-size: 24px; }
 .legend { display: flex; gap: 8px; color: var(--muted); font-size: 12px; }
 .legend span { border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; }
@@ -46,10 +47,40 @@ tbody tr:hover { background: #141a20; }
 .pill.skip { color: #ff9c9c; border-color: #603838; background: #211111; }
 .status { background: #1b222a; color: #b7c1cc; }
 .empty { text-align: center; color: var(--muted); padding: 48px; }
+
+.detailShell { max-width: 1180px; }
+.backLink { display: inline-block; color: var(--muted); margin-bottom: 28px; font-size: 13px; }
+.detailHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.detailHeader h1 { font-size: clamp(34px, 5vw, 54px); }
+.detailScore { min-width: 110px; min-height: 110px; border: 1px solid #40505c; border-radius: 50%; display: grid; place-items: center; align-content: center; }
+.detailScore strong { font-size: 38px; line-height: 1; }
+.detailScore span { color: var(--muted); font-size: 11px; text-transform: uppercase; margin-top: 6px; }
+.actionBar { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0; }
+.button, .primaryButton { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; border-radius: 10px; border: 1px solid #35404a; padding: 0 15px; background: #151b21; color: var(--text); cursor: pointer; font-weight: 700; font-size: 13px; text-decoration: none; }
+.button:hover, .primaryButton:hover { text-decoration: none; border-color: #596775; }
+.primaryButton { background: var(--accent); color: #0c1008; border-color: var(--accent); }
+.appliedBadge { display: inline-flex; align-items: center; padding: 0 14px; min-height: 42px; border-radius: 10px; color: var(--accent); border: 1px solid #496329; background: #18210e; font-weight: 700; font-size: 13px; }
+.detailGrid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 14px; }
+.evidenceGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+.detailCard { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+.detailCard h2 { margin: 0 0 15px; font-size: 18px; }
+.detailCard ul { padding-left: 19px; color: #c7d0da; line-height: 1.55; font-size: 13px; }
+.detailCard li + li { margin-top: 8px; }
+.scoreGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.scoreGrid span { border: 1px solid var(--line); border-radius: 12px; padding: 12px; color: var(--muted); font-size: 11px; }
+.scoreGrid strong { display: block; color: var(--text); font-size: 22px; margin-top: 6px; }
+.detailText { color: #c1cad4; line-height: 1.6; font-size: 13px; }
+.salaryRange { font-size: 30px; font-weight: 800; letter-spacing: -.03em; margin: 17px 0 14px; }
+.gapCard { border-color: #513434; }
+.jdCard { margin-top: 14px; }
+.jdCard pre { white-space: pre-wrap; font: inherit; font-size: 13px; line-height: 1.65; color: #c5ced7; margin: 15px 0 0; }
+
 @media (max-width: 900px) {
   .shell { width: min(100% - 28px, 1440px); padding-top: 28px; }
-  .topbar { flex-direction: column; }
+  .topbar, .detailHeader { flex-direction: column; align-items: flex-start; }
   .metrics { grid-template-columns: repeat(2, 1fr); }
+  .detailGrid, .evidenceGrid { grid-template-columns: 1fr; }
+  .scoreGrid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 560px) {
   .metrics { grid-template-columns: 1fr; }
