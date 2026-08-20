@@ -14,6 +14,13 @@ function values(input: unknown): string[] {
   });
 }
 
+function salaryEvidence(input: unknown): Array<{ title: string; company: string; location: string; salary: string; source_url: string }> {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is { title: string; company: string; location: string; salary: string; source_url: string } => {
+    return Boolean(item && typeof item === "object" && "title" in item && "company" in item);
+  });
+}
+
 function score(value: number | null) {
   return value == null ? "—" : Math.round(value).toString();
 }
@@ -35,6 +42,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const matched = values(job.matched_evidence);
   const partial = values(job.partial_evidence);
   const gaps = values(job.gaps);
+  const comparables = salaryEvidence(job.salary_evidence);
   const hasSalaryEstimate = job.salary_estimate_min != null || job.salary_estimate_max != null;
 
   return (
@@ -92,6 +100,16 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               <p>Recommended ask: <strong>{money(job.salary_recommended_ask, job.salary_currency ?? "NZD")}</strong></p>
               <p className="muted">{job.salary_confidence} confidence · {job.salary_comparable_count ?? 0} comparable roles</p>
               {job.salary_rationale && <p className="detailText">{job.salary_rationale}</p>}
+              {comparables.length > 0 && (
+                <ul>
+                  {comparables.map((item, i) => (
+                    <li key={i}>
+                      {item.source_url ? <a href={item.source_url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}
+                      {` · ${item.company} · ${item.location} · ${item.salary}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </>
           ) : (
             <>
