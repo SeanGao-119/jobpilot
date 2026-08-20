@@ -31,6 +31,13 @@ def _profile_version(path: str) -> str:
     return f"sha256:{digest}"
 
 
+def _database_url() -> str:
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        raise SystemExit("DATABASE_URL is required for this command")
+    return database_url
+
+
 def _cmd_parse_email(args: argparse.Namespace) -> int:
     payload = _load_json(args.input)
     result = parse_seek_recommendation_email(
@@ -83,17 +90,13 @@ def _cmd_rank_email(args: argparse.Namespace) -> int:
 
 
 def _cmd_persist_email(args: argparse.Namespace) -> int:
-    database_url = os.environ.get("DATABASE_URL", "").strip()
-    if not database_url:
-        raise SystemExit("DATABASE_URL is required for persist-email")
-
     payload, result = _rank_from_args(args)
     if not result.ranked_count:
         print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
         return 2
 
     profile_version = _profile_version(args.profile)
-    repository = PostgresJobRepository(database_url)
+    repository = PostgresJobRepository(_database_url())
     job_ids = repository.persist_batch(
         result,
         source_message_id=payload.get("message_id"),
@@ -109,6 +112,17 @@ def _cmd_persist_email(args: argparse.Namespace) -> int:
         "failures": [asdict(item) for item in result.failures],
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_mark_applied(args: argparse.Namespace) -> int:
+    repository = PostgresJobRepository(_database_url())
+    result = repository.mark_applied_by_company_title(
+        company=args.company,
+        title=args.title,
+        application_method=args.method,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -170,6 +184,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_rank_arguments(persist_email)
     persist_email.set_defaults(func=_cmd_persist_email)
+
+    mark_applied = subparsers.add_parser(
+        "mark-applied", help="Mark the newest matching job as applied"
+    )
+    mark_applied.add_argument("--company", required=True)
+    mark_applied.add_argument("--title", required=True)
+    mark_applied.add_argument("--method", default="seek")
+    mark_applied.set_defaults(func=_cmd_mark_applied)
 
     score = subparsers.add_parser(
         "score", help="Score structured job requirements against the fact registry"
