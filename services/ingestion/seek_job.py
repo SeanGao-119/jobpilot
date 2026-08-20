@@ -299,7 +299,6 @@ def _graphql_endpoint(url: str) -> str:
         return "https://nz.seek.com/graphql"
     if host == "seek.com.au" or host.endswith(".seek.com.au"):
         return "https://www.seek.com.au/graphql"
-    # Legacy NZ links are resolved before this function is normally called.
     return "https://nz.seek.com/graphql"
 
 
@@ -360,25 +359,41 @@ def _fetch_graphql_job(url: str, *, timeout: float) -> SeekJobPage:
     return _job_from_graphql(job, url)
 
 
-def fetch_seek_job(url: str, *, timeout: float = 15.0) -> SeekJobPage:
-    """Fetch a SEEK job, preferring the structured GraphQL detail endpoint.
+def _describe_fetch_error(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        content_type = response.headers.get("content-type", "unknown")
+        return f"HTTP {response.status_code} from {response.url} ({content_type})"
+    if isinstance(exc, httpx.RequestError):
+        return f"{type(exc).__name__}: {exc}"
+    return f"{type(exc).__name__}: {exc}"
 
-    SEEK's rendered job pages may be Cloudflare/SPA shells. The GraphQL endpoint is
-    what the site itself uses for structured job detail, so it is the primary path;
-    HTML parsing remains a compatibility fallback.
-    """
+
+def fetch_seek_job(url: str, *, timeout: float = 15.0) -> SeekJobPage:
+    """Fetch a SEEK job via GraphQL, with HTML as a compatibility fallback."""
     validate_seek_url(url)
+
+    graphql_error: Exception | None = None
     try:
         return _fetch_graphql_job(url, timeout=timeout)
-    except (httpx.HTTPError, ValueError, json.JSONDecodeError):
-        headers = {
-            "User-Agent": _BROWSER_UA,
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-NZ,en;q=0.9",
-        }
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
+        graphql_error = exc
+
+    headers = {
+        "User-Agent": _BROWSER_UA,
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-NZ,en;q=0.9",
+    }
+    try:
         with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
             response = client.get(url)
             response.raise_for_status()
             final_url = str(response.url)
             validate_seek_url(final_url)
             return parse_seek_job_page(response.text, source_url=final_url)
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as html_error:
+        graphql_detail = _describe_fetch_error(graphql_error) if graphql_error else "unknown"
+        html_detail = _describe_fetch_error(html_error)
+        raise ValueError(
+            f"SEEK detail fetch failed; GraphQL: {graphql_detail}; HTML fallback: {html_detail}"
+        ) from html_error
