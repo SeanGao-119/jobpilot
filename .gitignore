@@ -16,6 +16,12 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Gmail OAuth / local automation secrets
+.jobpilot/
+config/gmail-credentials.json
+gmail-credentials.json
+gmail-token.json
+
 # Generated application artifacts
 resume/generated/**
 !resume/generated/.gitkeep
