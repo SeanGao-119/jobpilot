@@ -19,6 +19,8 @@ export type DashboardStats = {
   consider: number;
   low: number;
   skip: number;
+  archived: number;
+  newToday: number;
 };
 
 export async function getDashboardData(): Promise<{
@@ -51,11 +53,19 @@ export async function getDashboardData(): Promise<{
     order by lm.overall_score desc, j.discovered_at desc
   `;
 
-  const jobs = [...rows];
+  const archived = rows.filter((job) => job.status === "skipped");
+  const jobs = rows.filter((job) => job.status !== "skipped");
   const total = jobs.length;
   const averageMatch = total
     ? jobs.reduce((sum, job) => sum + Number(job.overall_score), 0) / total
     : 0;
+  const today = new Date();
+  const newToday = jobs.filter((job) => {
+    const discovered = new Date(job.discovered_at);
+    return discovered.getFullYear() === today.getFullYear()
+      && discovered.getMonth() === today.getMonth()
+      && discovered.getDate() === today.getDate();
+  }).length;
 
   return {
     stats: {
@@ -65,6 +75,8 @@ export async function getDashboardData(): Promise<{
       consider: jobs.filter((job) => job.recommendation === "consider").length,
       low: jobs.filter((job) => job.recommendation === "low").length,
       skip: jobs.filter((job) => job.recommendation === "skip").length,
+      archived: archived.length,
+      newToday,
     },
     jobs,
   };
