@@ -1,5 +1,5 @@
 % Intro Options
-\ProvidesClass{resume-openfont}[2021/05/30 Abdullah's version]
+\ProvidesClass{resume-openfont}[2026/08/26 JobPilot TeX Live 2026 compatibility]
 \NeedsTeXFormat{LaTeX2e}
 \DeclareOption{print}{\def\@cv@print{}}
 \DeclareOption*{%
@@ -15,10 +15,27 @@
 \RequirePackage{titlesec}
 \RequirePackage{enumitem}
 \RequirePackage{tabularx}
-\RequirePackage{fontawesome}
-\RequirePackage{lato-font}
-\RequirePackage{raleway-font}
-\RequirePackage{ulem}
+\RequirePackage{xcolor}
+\RequirePackage[normalem]{ulem}
+
+% Font compatibility layer.
+% The original template referenced legacy local lato-font.sty / raleway-font.sty.
+% Modern TeX Live ships the same Lato and Raleway families as standard packages.
+\RequirePackage[default]{lato}
+\RequirePackage[nosfdefault]{raleway}
+
+% Preserve the original template macro names and font weights.
+\newcommand{\latoRegular}[1]{{\fontseries{m}\selectfont #1}}
+\newcommand{\customLatoLight}{\fontseries{l}\selectfont}
+\newcommand{\customLatoBlack}{\fontseries{k}\selectfont}
+\newcommand{\customRalewayMedium}{\ralewaymedium}
+
+% Current JobPilot template uses ProjectNoLink, so FontAwesome is not required.
+% Keep Project usable without forcing a legacy FontAwesome system font install.
+\providecommand{\faExternalLink}{}
+
+\definecolor{headings}{HTML}{6A6A6A}
+\definecolor{subheadings}{HTML}{333333}
 
 \titlespacing{\section}{0pt}{0pt}{0pt}
 \titleformat{\section}{%
