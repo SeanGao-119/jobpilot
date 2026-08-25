@@ -142,7 +142,7 @@ async function compile(texPath: string, masterDir?: string) {
   try {
     await execFileAsync("xelatex", ["-interaction=nonstopmode", "-halt-on-error", path.basename(texPath)], { cwd: path.dirname(texPath), env, timeout: 60000 });
   } catch (error) {
-    throw new Error(`XeLaTeX compilation failed. Install a TeX distribution and the lato-font/raleway-font packages. ${String(error)}`);
+    throw new Error(`XeLaTeX compilation failed. Verify the TeX Live packages required by the generated document are installed. ${String(error)}`);
   }
   return texPath.replace(/\.tex$/, ".pdf");
 }
@@ -189,7 +189,7 @@ export async function generateResume(jobId: string) {
 function coverTex(name: string, company: string, title: string, body: string) {
   const paragraphs = body.split(/\n\s*\n/).map((x) => latex(x.trim())).filter(Boolean).join("\n\n");
   const date = new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" });
-  return `\\documentclass[11pt,a4paper]{article}\n\\usepackage[a4paper,margin=0.78in]{geometry}\n\\usepackage[hidelinks]{hyperref}\n\\usepackage{lato-font}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0pt}\n\\setlength{\\parskip}{9pt}\n\\begin{document}\n{\\Large\\bfseries ${latex(name)}}\\\\\n+64 (022) 091 1240 $\\mid$ \\href{mailto:therinkao@gmail.com}{therinkao@gmail.com}\\\\\nNew Zealand\n\n\\vspace{12pt}\n${date}\n\nHiring Manager\\\\\n${latex(company)}\\\\\nNew Zealand\n\n\\textbf{Re: ${latex(title)}}\n\nDear Hiring Manager,\n\n${paragraphs}\n\nThank you for your consideration.\n\nKind regards,\\\\[14pt]\n${latex(name)}\n\\end{document}\n`;
+  return `\\documentclass[11pt,a4paper]{article}\n\\usepackage[a4paper,margin=0.78in]{geometry}\n\\usepackage[hidelinks]{hyperref}\n\\usepackage[default]{lato}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0pt}\n\\setlength{\\parskip}{9pt}\n\\begin{document}\n{\\Large\\bfseries ${latex(name)}}\\\\\n+64 (022) 091 1240 $\\mid$ \\href{mailto:therinkao@gmail.com}{therinkao@gmail.com}\\\\\nNew Zealand\n\n\\vspace{12pt}\n${date}\n\nHiring Manager\\\\\n${latex(company)}\\\\\nNew Zealand\n\n\\textbf{Re: ${latex(title)}}\n\nDear Hiring Manager,\n\n${paragraphs}\n\nThank you for your consideration.\n\nKind regards,\\\\[14pt]\n${latex(name)}\n\\end{document}\n`;
 }
 
 export async function generateCoverLetter(jobId: string) {
