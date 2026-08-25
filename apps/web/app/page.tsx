@@ -16,16 +16,16 @@ export default async function HomePage() {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">JOBPILOT V0.2</p>
+          <p className="eyebrow">JOBPILOT V0.3</p>
           <h1>Job search command centre</h1>
-          <p className="subtitle">Live SEEK recommendations, application state, document workflows and salary intelligence.</p>
+          <p className="subtitle">Daily SEEK ingestion, automatic matching, document workflows and stale-job cleanup.</p>
         </div>
         <div className="live"><span />Live database</div>
       </header>
 
       <section className="metrics">
-        <article><span>Jobs</span><strong>{stats.jobs}</strong><small>ranked opportunities</small></article>
-        <article><span>Average match</span><strong>{stats.averageMatch.toFixed(0)}%</strong><small>latest profile</small></article>
+        <article><span>Active jobs</span><strong>{stats.jobs}</strong><small>{stats.newToday} new today</small></article>
+        <article><span>Average match</span><strong>{stats.averageMatch.toFixed(0)}%</strong><small>active opportunities</small></article>
         <article><span>Apply</span><strong>{stats.apply}</strong><small>80+ match</small></article>
         <article><span>Consider</span><strong>{stats.consider}</strong><small>65–79 match</small></article>
       </section>
@@ -34,11 +34,12 @@ export default async function HomePage() {
         <div className="panelHead">
           <div>
             <p className="eyebrow">OPPORTUNITIES</p>
-            <h2>Ranked jobs</h2>
+            <h2>Active ranked jobs</h2>
           </div>
           <div className="legend">
             <span>Low {stats.low}</span>
             <span>Skip {stats.skip}</span>
+            <span>Archived {stats.archived}</span>
           </div>
         </div>
 
@@ -68,7 +69,7 @@ export default async function HomePage() {
                 </tr>
               ))}
               {jobs.length === 0 && (
-                <tr><td colSpan={7} className="empty">No ranked jobs yet. Run the SEEK ingestion pipeline first.</td></tr>
+                <tr><td colSpan={7} className="empty">No active ranked jobs. Run jobpilot daily to sync Gmail.</td></tr>
               )}
             </tbody>
           </table>
