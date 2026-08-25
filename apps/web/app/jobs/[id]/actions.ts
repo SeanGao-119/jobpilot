@@ -94,19 +94,71 @@ type SalaryResult = {
   evidence: SalaryEvidence[];
 };
 
-function isSalaryResult(value: unknown): value is SalaryResult {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<SalaryResult>;
-  return (
-    typeof item.estimate_min === "number" &&
-    typeof item.estimate_max === "number" &&
-    typeof item.recommended_ask === "number" &&
-    item.currency === "NZD" &&
-    ["hour", "day", "week", "month", "year"].includes(item.period ?? "") &&
-    ["low", "medium", "high"].includes(item.confidence ?? "") &&
-    typeof item.rationale === "string" &&
-    Array.isArray(item.evidence)
-  );
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizePeriod(value: unknown): SalaryResult["period"] | null {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["hour", "hourly", "per hour", "hr"].includes(text)) return "hour";
+  if (["day", "daily", "per day"].includes(text)) return "day";
+  if (["week", "weekly", "per week"].includes(text)) return "week";
+  if (["month", "monthly", "per month"].includes(text)) return "month";
+  if (["year", "yearly", "annual", "annually", "per year", "pa", "p.a."].includes(text)) return "year";
+  return null;
+}
+
+function normalizeConfidence(value: unknown): SalaryResult["confidence"] | null {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["low", "medium", "high"].includes(text)) return text as SalaryResult["confidence"];
+  if (["moderate", "mid"].includes(text)) return "medium";
+  return null;
+}
+
+function normalizeEvidence(value: unknown): SalaryEvidence[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const title = String(row.title ?? "").trim();
+    const company = String(row.company ?? "").trim();
+    const location = String(row.location ?? "New Zealand").trim() || "New Zealand";
+    const salary = String(row.salary ?? row.salary_text ?? "").trim();
+    const sourceUrl = String(row.source_url ?? row.url ?? "").trim();
+    if (!title || !salary || !sourceUrl) return [];
+    return [{ title, company: company || "Unknown", location, salary, source_url: sourceUrl }];
+  });
+}
+
+function normalizeSalaryResult(value: unknown): SalaryResult | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const estimateMin = asNumber(item.estimate_min ?? item.min_salary ?? item.salary_min);
+  const estimateMax = asNumber(item.estimate_max ?? item.max_salary ?? item.salary_max);
+  const recommendedAsk = asNumber(item.recommended_ask ?? item.ask ?? item.recommended_salary);
+  const period = normalizePeriod(item.period ?? item.salary_period);
+  const confidence = normalizeConfidence(item.confidence);
+  const rationale = String(item.rationale ?? item.reasoning ?? "").trim();
+  const evidence = normalizeEvidence(item.evidence ?? item.comparables ?? item.sources);
+
+  if (estimateMin == null || estimateMax == null || recommendedAsk == null || !period || !confidence || !rationale) {
+    return null;
+  }
+
+  return {
+    estimate_min: estimateMin,
+    estimate_max: estimateMax,
+    recommended_ask: recommendedAsk,
+    currency: "NZD",
+    period,
+    confidence,
+    comparable_count: evidence.length,
+    rationale,
+    evidence,
+  };
 }
 
 export async function refreshSalaryIntelligence(jobId: string) {
@@ -177,13 +229,17 @@ export async function refreshSalaryIntelligence(jobId: string) {
     );
   }
 
-  const result = await generateJson<SalaryResult>({
+  const rawResult = await generateJson<Record<string, unknown>>({
     system: [
       "You are JobPilot Salary Intelligence for New Zealand employment.",
       "Use ONLY the supplied evidence. Never invent salary figures, employers, URLs, or job advertisements.",
-      "If evidence is weak, sparse, or contains snippets without explicit salary figures, lower confidence accordingly.",
-      "Return valid JSON only with keys: estimate_min, estimate_max, recommended_ask, currency, period, confidence, comparable_count, rationale, evidence.",
-      "currency must be NZD. evidence must contain only sources actually used.",
+      "Return ONE JSON object only, with no markdown.",
+      "Use numeric JSON values, not strings, for estimate_min, estimate_max and recommended_ask.",
+      "Use currency exactly NZD.",
+      "Use period exactly one of: hour, day, week, month, year.",
+      "Use confidence exactly one of: low, medium, high.",
+      "Evidence must be an array of objects with exactly title, company, location, salary, source_url.",
+      "If evidence is weak or sparse, use low confidence instead of inventing data.",
     ].join(" "),
     user: JSON.stringify({
       target_job: {
@@ -194,6 +250,25 @@ export async function refreshSalaryIntelligence(jobId: string) {
         description: (job.jd_clean ?? "").slice(0, 12000),
       },
       evidence_sources: sourceRows,
+      required_output_shape: {
+        estimate_min: 70000,
+        estimate_max: 85000,
+        recommended_ask: 80000,
+        currency: "NZD",
+        period: "year",
+        confidence: "medium",
+        comparable_count: 3,
+        rationale: "brief evidence-based explanation",
+        evidence: [
+          {
+            title: "Example role",
+            company: "Example company",
+            location: "Auckland",
+            salary: "$75,000-$85,000",
+            source_url: "https://example.com/job"
+          }
+        ]
+      },
       instructions: [
         "Estimate a defensible market compensation range for the target role.",
         "Prioritise same/similar title, location, seniority, responsibilities and technology stack.",
@@ -203,9 +278,13 @@ export async function refreshSalaryIntelligence(jobId: string) {
     }),
   });
 
-  if (!isSalaryResult(result)) throw new Error("Salary Intelligence returned invalid JSON");
+  const result = normalizeSalaryResult(rawResult);
+  if (!result) {
+    console.error("Salary Intelligence raw result failed normalization", rawResult);
+    throw new Error("Salary Intelligence returned an unsupported JSON shape; check the server terminal for the normalized-safe raw response.");
+  }
   if (result.estimate_min > result.estimate_max) {
-    throw new Error("Salary Intelligence returned an invalid range");
+    [result.estimate_min, result.estimate_max] = [result.estimate_max, result.estimate_min];
   }
 
   const allowedUrls = new Set(sourceRows.map((item) => item.source_url).filter(Boolean));
