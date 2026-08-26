@@ -148,12 +148,17 @@ class PostgresJobRepository:
         job_ids: list[str] = []
         failures: list[dict[str, str]] = []
 
+        timeout_value = f"{max(statement_timeout_ms, 1000)}ms"
+
         for job in batch.jobs:
             last_error: Exception | None = None
             for attempt in range(1, max(retries, 1) + 1):
                 try:
                     with self._connect(self.database_url) as conn:
-                        conn.execute("set local statement_timeout = %s", (statement_timeout_ms,))
+                        conn.execute(
+                            "select set_config('statement_timeout', %s, true)",
+                            (timeout_value,),
+                        )
                         job_ids.append(
                             self._persist_job(
                                 conn,
