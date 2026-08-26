@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -128,6 +129,62 @@ class PostgresJobRepository:
                     )
                 )
         return tuple(job_ids)
+
+    def persist_batch_resilient(
+        self,
+        batch: RankBatchResult,
+        *,
+        source_message_id: str | None,
+        profile_version: str,
+        prompt_version: str | None = None,
+        statement_timeout_ms: int = 60000,
+        retries: int = 3,
+    ) -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
+        """Persist jobs independently, retrying transient PostgreSQL query cancellations.
+
+        Intended for large Gmail backfills where one slow upsert should not roll back
+        an entire recommendation email.
+        """
+        job_ids: list[str] = []
+        failures: list[dict[str, str]] = []
+
+        for job in batch.jobs:
+            last_error: Exception | None = None
+            for attempt in range(1, max(retries, 1) + 1):
+                try:
+                    with self._connect(self.database_url) as conn:
+                        conn.execute("set local statement_timeout = %s", (statement_timeout_ms,))
+                        job_ids.append(
+                            self._persist_job(
+                                conn,
+                                job,
+                                source_message_id=source_message_id,
+                                profile_version=profile_version,
+                                prompt_version=prompt_version,
+                            )
+                        )
+                    last_error = None
+                    break
+                except psycopg.errors.QueryCanceled as exc:
+                    last_error = exc
+                    if attempt < retries:
+                        time.sleep(min(2 ** (attempt - 1), 4))
+                        continue
+                    break
+                except psycopg.Error as exc:
+                    last_error = exc
+                    break
+
+            if last_error is not None:
+                failures.append(
+                    {
+                        "title": getattr(job.job, "title", None) or "Unknown role",
+                        "company": getattr(job.job, "company", None) or "Unknown company",
+                        "error": str(last_error),
+                    }
+                )
+
+        return tuple(job_ids), tuple(failures)
 
     def mark_applied_by_company_title(
         self,
