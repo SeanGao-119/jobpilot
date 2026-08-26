@@ -178,8 +178,9 @@ class PostgresJobRepository:
             if last_error is not None:
                 failures.append(
                     {
-                        "title": getattr(job.job, "title", None) or "Unknown role",
-                        "company": getattr(job.job, "company", None) or "Unknown company",
+                        "title": job.title or "Unknown role",
+                        "company": job.company or "Unknown company",
+                        "source_url": job.seek_url or "",
                         "error": str(last_error),
                     }
                 )
