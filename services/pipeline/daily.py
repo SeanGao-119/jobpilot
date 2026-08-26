@@ -38,6 +38,7 @@ def sync_seek_gmail(
         "messages_processed": 0,
         "persisted_jobs": 0,
         "failed_jobs": 0,
+        "database_failures": 0,
         "messages": [],
     }
 
@@ -46,13 +47,28 @@ def sync_seek_gmail(
             output["messages_skipped"] += 1
             continue
 
-        result = rank_seek_email(
-            subject=message.subject,
-            body=message.body,
-            message_id=message.message_id,
-            profile=profile,
-            max_workers=workers,
-        )
+        try:
+            result = rank_seek_email(
+                subject=message.subject,
+                body=message.body,
+                message_id=message.message_id,
+                profile=profile,
+                max_workers=workers,
+            )
+        except Exception as exc:
+            output["messages_processed"] += 1
+            output["failed_jobs"] += 1
+            output["messages"].append(
+                {
+                    "message_id": message.message_id,
+                    "subject": message.subject,
+                    "ranked_count": 0,
+                    "failed_count": 1,
+                    "failures": [{"stage": "ranking", "error": str(exc)}],
+                }
+            )
+            continue
+
         item = {
             "message_id": message.message_id,
             "subject": message.subject,
@@ -60,15 +76,21 @@ def sync_seek_gmail(
             "failed_count": result.failed_count,
             "failures": [asdict(failure) for failure in result.failures],
         }
+
         if result.ranked_count:
-            ids = repository.persist_batch(
+            ids, db_failures = repository.persist_batch_resilient(
                 result,
                 source_message_id=message.message_id,
                 profile_version=profile_version,
                 prompt_version="deterministic-v1",
+                statement_timeout_ms=60000,
+                retries=3,
             )
             item["job_ids"] = list(ids)
+            item["database_failures"] = list(db_failures)
             output["persisted_jobs"] += len(ids)
+            output["database_failures"] += len(db_failures)
+
         output["failed_jobs"] += result.failed_count
         output["messages_processed"] += 1
         output["messages"].append(item)
