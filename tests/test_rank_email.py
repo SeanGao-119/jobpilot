@@ -1,6 +1,6 @@
 from services.ingestion.seek_job import SeekJobPage
 from services.ingestion.seek_link import ResolvedSeekLink
-from services.pipeline.rank_email import rank_seek_email
+from services.pipeline.rank_email import rank_seek_email, rank_seek_url
 
 EMAIL_BODY = """
 [Acme Data
@@ -36,6 +36,7 @@ def _resolver(url: str) -> ResolvedSeekLink:
         "https://email.s.seek.co.nz/job-a": "https://www.seek.co.nz/job/11111111",
         "https://email.s.seek.co.nz/job-b": "https://www.seek.co.nz/job/22222222",
         "https://email.s.seek.co.nz/job-c": "https://www.seek.co.nz/job/33333333",
+        "https://www.seek.co.nz/job/11111111": "https://www.seek.co.nz/job/11111111",
     }
     final = mapping[url]
     return ResolvedSeekLink(input_url=url, final_url=final, seek_job_id=final.rsplit("/", 1)[1])
@@ -90,3 +91,17 @@ def test_rank_seek_email_sorts_and_isolates_failures() -> None:
     assert result.jobs[1].match.experience_score < 30
     assert result.failures[0].company == "Broken Co"
     assert "synthetic fetch failure" in result.failures[0].message
+
+
+def test_rank_seek_url_uses_same_pipeline_as_email_jobs() -> None:
+    result = rank_seek_url(
+        url="https://www.seek.co.nz/job/11111111",
+        profile=PROFILE,
+        resolver=_resolver,
+        fetcher=_fetcher,
+    )
+
+    assert result.seek_job_id == "11111111"
+    assert result.title == "Data Engineer"
+    assert result.company == "Acme Data"
+    assert result.match.overall_score > 0
