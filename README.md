@@ -4,25 +4,80 @@ JobPilot is a personal job-application operating system for discovering roles, m
 
 ## Current vertical slice
 
-JobPilot has a working end-to-end path:
+JobPilot has a working end-to-end path with multiple SEEK discovery channels:
 
 ```text
-SEEK recommendation email
-        ↓
-tracking-link resolution
-        ↓
-SEEK job detail ingestion
-        ↓
-requirement extraction
-        ↓
-explainable profile matching
-        ↓
-PostgreSQL / Supabase persistence
-        ↓
-Next.js dashboard + job workspace
+SEEK Recommendations ───────┐
+SEEK Saved Search / Alerts ─┼──> Gmail ingestion ──┐
+                            │                       │
+Manual SEEK job URL ────────┴───────────────────────┤
+                                                    ↓
+                                      canonical SEEK job ID
+                                                    ↓
+                                      normalize + deduplicate
+                                                    ↓
+                                      SEEK job detail ingestion
+                                                    ↓
+                                      requirement extraction
+                                                    ↓
+                                      explainable profile matching
+                                                    ↓
+                                      PostgreSQL / Supabase
+                                                    ↓
+                                      Next.js dashboard + workspace
 ```
 
-A real 12-job SEEK recommendation batch has been parsed, ranked and persisted successfully.
+A real 12-job SEEK recommendation batch has been parsed, ranked and persisted successfully. The same ranking and persistence pipeline can now also be invoked for a manually supplied SEEK job URL, so jobs that SEEK did not recommend can still enter JobPilot.
+
+## SEEK discovery strategy
+
+Use SEEK's own discovery surfaces rather than making JobPilot depend on a site scraper:
+
+1. Create several SEEK Saved Searches / Job Alerts covering the role families and locations you want.
+2. Keep SEEK Recommendations enabled as an additional discovery source.
+3. Paste any interesting SEEK URL into JobPilot's manual URL ingestion path when you find a role outside those feeds.
+
+The default Gmail query is intentionally broad enough to include SEEK job mail while excluding SEEK Pass verification traffic:
+
+```text
+from:seek.co.nz -from:seekpass.co newer_than:14d
+```
+
+Override it with `GMAIL_SEEK_QUERY` or `--query` when needed.
+
+All resolved SEEK roles are persisted with `source=seek_url` and the stable SEEK job ID as `source_external_id`. This is deliberate: the same role discovered through Recommendations, a Saved Search alert, or a manually pasted URL resolves to one canonical database row. Gmail message IDs are retained separately for provenance.
+
+## Manual SEEK URL ingestion
+
+For a SEEK role that was not recommended to you:
+
+```bash
+jobpilot add-url "https://www.seek.co.nz/job/12345678"
+```
+
+or, without installing the console script:
+
+```bash
+python -m services.cli add-url "https://www.seek.co.nz/job/12345678"
+```
+
+The command resolves the URL, fetches the job description, extracts requirements, calculates the same explainable match score used by email ingestion, deduplicates by SEEK job ID, and persists the result.
+
+To ingest recent SEEK mail:
+
+```bash
+jobpilot sync-gmail
+```
+
+The regular daily flow remains:
+
+```bash
+jobpilot daily
+```
+
+## Database migration
+
+When upgrading an existing JobPilot database, apply migrations in order. `database/migrations/003_canonical_seek_source.sql` converts existing SEEK email/search rows to the canonical `seek_url` source where safe, allowing future email and manual discoveries to deduplicate against the same SEEK job ID.
 
 ## Core design principle
 

@@ -147,6 +147,18 @@ def _rank_one(
     )
 
 
+def rank_seek_url(
+    *,
+    url: str,
+    profile: Mapping,
+    resolver: ResolveFn = resolve_seek_tracking_url,
+    fetcher: FetchFn = fetch_seek_job,
+) -> RankedSeekJob:
+    """Resolve, fetch and rank a single SEEK job URL using the same pipeline as email jobs."""
+    recommendation = JobRecommendation(source_url=url, company="SEEK manual import")
+    return _rank_one(recommendation, profile, resolver, fetcher)
+
+
 def rank_seek_email(
     *,
     subject: str,
@@ -157,7 +169,7 @@ def rank_seek_email(
     resolver: ResolveFn = resolve_seek_tracking_url,
     fetcher: FetchFn = fetch_seek_job,
 ) -> RankBatchResult:
-    """Resolve, fetch, extract, and rank all jobs from one SEEK recommendation email."""
+    """Resolve, fetch, extract, and rank all jobs from one SEEK email."""
     parsed = parse_seek_recommendation_email(subject=subject, body=body, message_id=message_id)
     recommendations = list(parsed.recommendations)
     jobs: list[RankedSeekJob] = []

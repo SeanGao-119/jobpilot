@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from .models import JobRecommendation, dedupe_recommendations
 
@@ -24,6 +25,9 @@ _SKIP_LABELS = (
     "how recommendations work",
     "rate your recent employer",
     "was this email useful",
+    "unsubscribe",
+    "privacy",
+    "terms",
 )
 
 
@@ -55,6 +59,12 @@ def _clean_lines(label: str) -> list[str]:
     return lines
 
 
+def _is_direct_seek_job_url(url: str) -> bool:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return host.endswith("seek.co.nz") and bool(re.search(r"/job/\d+", parsed.path))
+
+
 def _looks_like_job(label: str, url: str) -> bool:
     low = label.lower()
     if any(skip in low for skip in _SKIP_LABELS):
@@ -62,6 +72,16 @@ def _looks_like_job(label: str, url: str) -> bool:
     if "email.s.seek.co.nz" not in url and "seek.co.nz" not in url:
         return False
     lines = _clean_lines(label)
+    if not lines:
+        return False
+
+    # Saved-search/job-alert emails can expose a direct SEEK job URL with only the job
+    # title as link text. The job page itself is authoritative for company/location.
+    if _is_direct_seek_job_url(url):
+        return True
+
+    # Recommendation tracking links contain richer card text; requiring a location hint
+    # prevents footer/navigation links on the same email domain from becoming fake jobs.
     if len(lines) < 2:
         return False
     return any(hint.lower() in " ".join(lines).lower() for hint in _LOCATION_HINTS)
@@ -97,11 +117,11 @@ def _split_metadata(
 def parse_seek_recommendation_email(
     *, subject: str, body: str, message_id: str | None = None
 ) -> SeekEmailParseResult:
-    """Parse SEEK recommendation email Markdown returned by the Gmail connector.
+    """Parse supported SEEK job email Markdown returned by the Gmail connector.
 
-    SEEK's recommendation emails expose company/location/highlights in the link label.
-    The exact job title may require resolving the tracking URL; the email subject is used
-    only as a title hint for the first recommendation and is never copied to every job.
+    Recommendation emails expose company/location/highlights in the link label. Saved
+    search/job-alert mail may instead expose a direct SEEK job URL with only a short label.
+    In both cases the resolved SEEK job page is the authoritative source for job metadata.
     """
     title_hint, advertised_count = parse_subject(subject)
     items: list[JobRecommendation] = []

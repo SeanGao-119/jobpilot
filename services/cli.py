@@ -16,7 +16,7 @@ from services.ingestion.seek_job import fetch_seek_job
 from services.ingestion.seek_link import resolve_seek_tracking_url
 from services.matching.scorer import score_job
 from services.pipeline.daily import cleanup_stale_jobs, sync_seek_gmail
-from services.pipeline.rank_email import rank_seek_email
+from services.pipeline.rank_email import RankBatchResult, rank_seek_email, rank_seek_url
 from services.storage.postgres import PostgresJobRepository
 
 
@@ -106,6 +106,37 @@ def _cmd_persist_email(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_add_url(args: argparse.Namespace) -> int:
+    profile = _load_profile(args.profile)
+    ranked = rank_seek_url(url=args.url, profile=profile)
+    batch = RankBatchResult(
+        advertised_count=1,
+        parsed_count=1,
+        ranked_count=1,
+        failed_count=0,
+        jobs=(ranked,),
+        failures=(),
+    )
+    profile_version = _profile_version(args.profile)
+    repository = PostgresJobRepository(_database_url())
+    job_ids = repository.persist_batch(
+        batch,
+        source_message_id=None,
+        profile_version=profile_version,
+        prompt_version="deterministic-v1",
+    )
+    print(json.dumps({
+        "job_id": job_ids[0],
+        "seek_job_id": ranked.seek_job_id,
+        "title": ranked.title,
+        "company": ranked.company,
+        "match_score": ranked.match.overall_score,
+        "recommendation": ranked.match.recommendation,
+        "source_url": ranked.seek_url,
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_sync_gmail(args: argparse.Namespace) -> int:
     profile = _load_profile(args.profile)
     result = sync_seek_gmail(database_url=_database_url(), profile=profile, profile_version=_profile_version(args.profile), query=args.query, limit=args.limit, workers=args.workers)
@@ -164,11 +195,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jobpilot")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    parse_email = subparsers.add_parser("parse-email", help="Parse a SEEK recommendation email JSON export")
+    parse_email = subparsers.add_parser("parse-email", help="Parse a SEEK email JSON export")
     parse_email.add_argument("input", help="JSON with subject, body, and optional message_id")
     parse_email.set_defaults(func=_cmd_parse_email)
 
-    resolve_url = subparsers.add_parser("resolve-url", help="Resolve a SEEK recommendation tracking URL")
+    resolve_url = subparsers.add_parser("resolve-url", help="Resolve a SEEK tracking URL")
     resolve_url.add_argument("url")
     resolve_url.set_defaults(func=_cmd_resolve_url)
 
@@ -176,16 +207,21 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_job.add_argument("url")
     fetch_job.set_defaults(func=_cmd_fetch_job)
 
-    rank_email = subparsers.add_parser("rank-email", help="Resolve and rank all jobs in a SEEK recommendation email")
+    add_url = subparsers.add_parser("add-url", help="Import, rank, deduplicate and persist one SEEK job URL")
+    add_url.add_argument("url")
+    add_url.add_argument("--profile", default="resume/facts/profile.yaml")
+    add_url.set_defaults(func=_cmd_add_url)
+
+    rank_email = subparsers.add_parser("rank-email", help="Resolve and rank all jobs in a SEEK email")
     _add_rank_arguments(rank_email)
     rank_email.add_argument("--top", type=int)
     rank_email.set_defaults(func=_cmd_rank_email)
 
-    persist_email = subparsers.add_parser("persist-email", help="Rank a SEEK recommendation email and upsert results into PostgreSQL")
+    persist_email = subparsers.add_parser("persist-email", help="Rank a SEEK email and upsert results into PostgreSQL")
     _add_rank_arguments(persist_email)
     persist_email.set_defaults(func=_cmd_persist_email)
 
-    sync_gmail = subparsers.add_parser("sync-gmail", help="Fetch new SEEK recommendation emails from Gmail and persist ranked jobs")
+    sync_gmail = subparsers.add_parser("sync-gmail", help="Fetch SEEK recommendation/job-alert emails from Gmail and persist ranked jobs")
     sync_gmail.add_argument("--profile", default="resume/facts/profile.yaml")
     sync_gmail.add_argument("--query", default=None)
     sync_gmail.add_argument("--limit", type=int, default=25)

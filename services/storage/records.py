@@ -11,9 +11,15 @@ def job_record_from_ranked(
     *,
     source_message_id: str | None = None,
 ) -> dict[str, Any]:
-    """Map a ranked SEEK job to the columns used by database.jobs."""
+    """Map a ranked SEEK job to the columns used by database.jobs.
+
+    All SEEK discoveries use the canonical ``seek_url`` source so the stable SEEK job ID
+    deduplicates the same role regardless of whether it was found in Recommendations,
+    a saved-search/job-alert email, or through a manually pasted URL. Email provenance is
+    retained separately in ``source_message_id``.
+    """
     return {
-        "source": "seek_email",
+        "source": "seek_url",
         "source_external_id": job.seek_job_id,
         "source_url": job.seek_url,
         "source_message_id": source_message_id,
