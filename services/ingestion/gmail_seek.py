@@ -46,7 +46,15 @@ def gmail_token_path() -> Path:
 
 
 def gmail_seek_query() -> str:
-    return os.environ.get("GMAIL_SEEK_QUERY", "from:seek newer_than:14d").strip()
+    """Return the default SEEK mailbox query.
+
+    Keep the query broad enough to include both recommendation emails and user-created
+    SEEK saved-search/job-alert emails, while excluding SEEK Pass verification traffic.
+    """
+    return os.environ.get(
+        "GMAIL_SEEK_QUERY",
+        "from:seek.co.nz -from:seekpass.co newer_than:14d",
+    ).strip()
 
 
 def _credentials() -> Credentials:
