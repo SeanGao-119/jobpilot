@@ -43,3 +43,21 @@ Recently posted](https://email.s.seek.co.nz/job-b)
     assert second.company == "Massey University"
     assert second.salary_text == "$83818 - $117788 p.a."
     assert second.title_hint is None
+
+
+def test_parse_seek_alert_accepts_direct_job_link_with_short_label():
+    body = """
+[Data Analyst](https://www.seek.co.nz/job/12345678)
+[Privacy](https://www.seek.co.nz/privacy)
+"""
+
+    result = parse_seek_recommendation_email(
+        subject="New jobs for Data Analyst",
+        body=body,
+        message_id="gmail-alert-1",
+    )
+
+    assert len(result.recommendations) == 1
+    recommendation = result.recommendations[0]
+    assert recommendation.source_url == "https://www.seek.co.nz/job/12345678"
+    assert recommendation.source_message_id == "gmail-alert-1"
