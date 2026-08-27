@@ -39,10 +39,10 @@ def _ranked_job() -> RankedSeekJob:
     )
 
 
-def test_job_record_preserves_jd_and_source_identity() -> None:
+def test_job_record_preserves_jd_and_canonical_seek_identity() -> None:
     record = job_record_from_ranked(_ranked_job(), source_message_id="gmail-message")
 
-    assert record["source"] == "seek_email"
+    assert record["source"] == "seek_url"
     assert record["source_external_id"] == "12345678"
     assert record["source_message_id"] == "gmail-message"
     assert record["jd_raw"].startswith("Required Python")
