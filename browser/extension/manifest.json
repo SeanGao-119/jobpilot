@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "JobPilot SEEK Sync",
+  "version": "0.1.0",
+  "description": "Push SEEK Saved Jobs from the signed-in browser into local JobPilot.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://www.seek.co.nz/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "action": {
+    "default_title": "Sync SEEK Saved Jobs",
+    "default_popup": "popup.html"
+  }
+}
