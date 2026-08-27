@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import asdict
 from typing import Any
 
+import httpx
 import psycopg
 from psycopg.types.json import Jsonb
 
@@ -11,7 +12,7 @@ from services.ingestion.models import JobRecommendation
 from services.ingestion.seek_job import fetch_seek_job
 from services.ingestion.seek_link import ResolvedSeekLink, extract_seek_job_id
 from services.ingestion.seek_saved import parse_saved_seek_urls
-from services.pipeline.rank_email import RankBatchResult, RankFailure, RankedSeekJob, _rank_one
+from services.pipeline.rank_email import RankBatchResult, RankedSeekJob, RankFailure, _rank_one
 from services.storage.records import job_record_from_ranked, match_record_from_ranked
 
 
@@ -87,7 +88,7 @@ def rank_saved_seek_jobs(
                     fetch_seek_job,
                 )
             )
-        except (OSError, ValueError, Exception) as exc:  # network/parser failures are reported per job
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             failures.append(
                 RankFailure(
                     external_id=item.seek_job_id,
