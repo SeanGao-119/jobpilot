@@ -10,10 +10,11 @@ def job_record_from_ranked(
     job: RankedSeekJob,
     *,
     source_message_id: str | None = None,
+    source: str = "seek_email",
 ) -> dict[str, Any]:
     """Map a ranked SEEK job to the columns used by database.jobs."""
     return {
-        "source": "seek_email",
+        "source": source,
         "source_external_id": job.seek_job_id,
         "source_url": job.seek_url,
         "source_message_id": source_message_id,
