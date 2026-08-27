@@ -3,16 +3,21 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import yaml
 from psycopg.conninfo import make_conninfo
 
 from services.pipeline.seek_saved import persist_saved_seek_jobs, rank_saved_seek_jobs
 
-ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "resume" / "facts" / "profile.yaml"
 
 
@@ -49,11 +54,24 @@ def _database_url() -> str:
     )
 
 
+def _allowed_origin(origin: str | None) -> str | None:
+    if not origin:
+        return None
+    parsed = urlparse(origin)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "https" and (host == "seek.co.nz" or host.endswith(".seek.co.nz")):
+        return origin
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "JobPilotSeekSaved/0.1"
 
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "https://www.seek.co.nz")
+        origin = _allowed_origin(self.headers.get("Origin"))
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Private-Network", "true")
@@ -68,6 +86,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not _allowed_origin(self.headers.get("Origin")):
+            self._json(403, {"error": "origin_not_allowed"})
+            return
         self.send_response(204)
         self._cors()
         self.end_headers()
@@ -75,6 +96,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/seek-saved/sync":
             self._json(404, {"error": "not_found"})
+            return
+        if not _allowed_origin(self.headers.get("Origin")):
+            self._json(403, {"error": "origin_not_allowed"})
             return
 
         try:
