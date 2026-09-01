@@ -25,6 +25,20 @@ _SKIP_LABELS = (
     "rate your recent employer",
     "was this email useful",
 )
+_ALERT_HINTS = (
+    "job alert",
+    "jobs matching",
+    "new jobs matching",
+    "matching your job alert",
+    "your saved search",
+)
+_RECOMMENDATION_HINTS = (
+    "recommend",
+    "recommended jobs",
+    "jobs for you",
+    "picked for you",
+    "based on your activity",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +46,18 @@ class SeekEmailParseResult:
     subject_title_hint: str | None
     advertised_count: int | None
     recommendations: tuple[JobRecommendation, ...]
+
+
+def classify_seek_email(subject: str, body: str = "") -> str:
+    """Classify a SEEK email into the source categories shown in JobPilot."""
+    text = f"{subject}\n{body[:4000]}".lower()
+    if any(hint in text for hint in _ALERT_HINTS):
+        return "job_alert"
+    if any(hint in text for hint in _RECOMMENDATION_HINTS):
+        return "recommendation"
+    # The existing parser was originally built for recommendation emails, so keep
+    # that as the backwards-compatible fallback until another SEEK email format is known.
+    return "recommendation"
 
 
 def parse_subject(subject: str) -> tuple[str | None, int | None]:
