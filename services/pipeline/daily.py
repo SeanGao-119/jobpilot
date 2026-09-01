@@ -23,6 +23,24 @@ def _message_processed(database_url: str, message_id: str) -> bool:
         )
 
 
+def _refresh_message_source(
+    database_url: str,
+    message_id: str,
+    source_category: str,
+) -> None:
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            """
+            update jobs
+            set ingestion_mode = 'automatic'::ingestion_mode,
+                source_category = %s::source_category,
+                updated_at = now()
+            where source_message_id = %s
+            """,
+            (source_category, message_id),
+        )
+
+
 def sync_seek_gmail(
     *,
     database_url: str,
@@ -45,11 +63,16 @@ def sync_seek_gmail(
     }
 
     for message in reversed(messages):
+        source_category = classify_seek_email(message.subject, message.body)
         if _message_processed(database_url, message.message_id):
+            _refresh_message_source(
+                database_url,
+                message.message_id,
+                source_category,
+            )
             output["messages_skipped"] += 1
             continue
 
-        source_category = classify_seek_email(message.subject, message.body)
         try:
             result = rank_seek_email(
                 subject=message.subject,
