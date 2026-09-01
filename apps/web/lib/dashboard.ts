@@ -5,10 +5,12 @@ export type DashboardJob = {
   company: string;
   title: string;
   location: string | null;
-  overall_score: number;
-  recommendation: "apply" | "consider" | "low" | "skip";
+  overall_score: number | null;
+  recommendation: "apply" | "consider" | "low" | "skip" | null;
   discovered_at: string;
   source_url: string | null;
+  ingestion_mode: "manual" | "automatic";
+  source_category: "manual_url" | "job_alert" | "recommendation" | "other";
   status: string;
 };
 
@@ -46,18 +48,20 @@ export async function getDashboardData(): Promise<{
       lm.recommendation,
       j.discovered_at::text,
       j.source_url,
+      j.ingestion_mode::text,
+      j.source_category::text,
       coalesce(a.status::text, 'discovered') as status
     from jobs j
-    join latest_matches lm on lm.job_id = j.id
+    left join latest_matches lm on lm.job_id = j.id
     left join applications a on a.job_id = j.id
-    order by lm.overall_score desc, j.discovered_at desc
+    order by lm.overall_score desc nulls last, j.discovered_at desc
   `;
 
   const archived = rows.filter((job) => job.status === "skipped");
   const jobs = rows.filter((job) => job.status !== "skipped");
-  const total = jobs.length;
-  const averageMatch = total
-    ? jobs.reduce((sum, job) => sum + Number(job.overall_score), 0) / total
+  const scored = jobs.filter((job) => job.overall_score !== null);
+  const averageMatch = scored.length
+    ? scored.reduce((sum, job) => sum + Number(job.overall_score), 0) / scored.length
     : 0;
   const today = new Date();
   const newToday = jobs.filter((job) => {
@@ -69,7 +73,7 @@ export async function getDashboardData(): Promise<{
 
   return {
     stats: {
-      jobs: total,
+      jobs: jobs.length,
       averageMatch,
       apply: jobs.filter((job) => job.recommendation === "apply").length,
       consider: jobs.filter((job) => job.recommendation === "consider").length,
