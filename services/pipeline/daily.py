@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 
 from services.ingestion.gmail_seek import fetch_seek_messages
 from services.ingestion.seek_email import classify_seek_email
+from services.pipeline.manual_url import sync_manual_seek_urls
 from services.pipeline.rank_email import rank_seek_email
 from services.storage.postgres import PostgresJobRepository
 
@@ -102,6 +103,12 @@ def sync_seek_gmail(
         output["messages_processed"] += 1
         output["messages"].append(item)
 
+    output["manual_urls"] = sync_manual_seek_urls(
+        database_url=database_url,
+        profile=profile,
+        profile_version=profile_version,
+        limit=limit,
+    )
     return output
 
 
