@@ -7,6 +7,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from services.ingestion.gmail_seek import fetch_seek_messages
+from services.ingestion.seek_email import classify_seek_email
 from services.pipeline.rank_email import rank_seek_email
 from services.storage.postgres import PostgresJobRepository
 
@@ -47,6 +48,7 @@ def sync_seek_gmail(
             output["messages_skipped"] += 1
             continue
 
+        source_category = classify_seek_email(message.subject, message.body)
         try:
             result = rank_seek_email(
                 subject=message.subject,
@@ -62,6 +64,7 @@ def sync_seek_gmail(
                 {
                     "message_id": message.message_id,
                     "subject": message.subject,
+                    "source_category": source_category,
                     "ranked_count": 0,
                     "failed_count": 1,
                     "failures": [{"stage": "ranking", "error": str(exc)}],
@@ -72,6 +75,7 @@ def sync_seek_gmail(
         item = {
             "message_id": message.message_id,
             "subject": message.subject,
+            "source_category": source_category,
             "ranked_count": result.ranked_count,
             "failed_count": result.failed_count,
             "failures": [asdict(failure) for failure in result.failures],
@@ -85,6 +89,9 @@ def sync_seek_gmail(
                 prompt_version="deterministic-v1",
                 statement_timeout_ms=60000,
                 retries=3,
+                source="seek_email",
+                ingestion_mode="automatic",
+                source_category=source_category,
             )
             item["job_ids"] = list(ids)
             item["database_failures"] = list(db_failures)
