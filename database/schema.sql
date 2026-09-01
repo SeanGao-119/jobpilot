@@ -3,6 +3,8 @@
 create extension if not exists pgcrypto;
 
 create type job_source as enum ('seek_email', 'seek_url', 'seek_search', 'manual');
+create type ingestion_mode as enum ('manual', 'automatic');
+create type source_category as enum ('manual_url', 'job_alert', 'recommendation', 'other');
 create type application_status as enum (
   'discovered',
   'analyzed',
@@ -25,6 +27,8 @@ create table if not exists jobs (
   source_external_id text,
   source_url text,
   source_message_id text,
+  ingestion_mode ingestion_mode not null default 'automatic',
+  source_category source_category not null default 'other',
 
   title text not null,
   company text not null,
@@ -51,6 +55,8 @@ create table if not exists jobs (
 
 create index if not exists jobs_company_title_idx on jobs (lower(company), lower(title));
 create index if not exists jobs_discovered_at_idx on jobs (discovered_at desc);
+create index if not exists jobs_ingestion_mode_idx on jobs (ingestion_mode);
+create index if not exists jobs_source_category_idx on jobs (source_category);
 
 create table if not exists job_matches (
   id uuid primary key default gen_random_uuid(),
