@@ -15,16 +15,20 @@ ConnectFn = Callable[[str], Any]
 _JOB_UPSERT_SQL = """
 insert into jobs (
   source, source_external_id, source_url, source_message_id,
+  ingestion_mode, source_category,
   title, company, location, employment_type, salary_text,
   jd_raw, jd_clean, requirements
 ) values (
   %(source)s, %(source_external_id)s, %(source_url)s, %(source_message_id)s,
+  %(ingestion_mode)s::ingestion_mode, %(source_category)s::source_category,
   %(title)s, %(company)s, %(location)s, %(employment_type)s, %(salary_text)s,
   %(jd_raw)s, %(jd_clean)s, %(requirements)s
 )
 on conflict (source, source_external_id) do update set
   source_url = excluded.source_url,
   source_message_id = excluded.source_message_id,
+  ingestion_mode = excluded.ingestion_mode,
+  source_category = excluded.source_category,
   title = excluded.title,
   company = excluded.company,
   location = excluded.location,
@@ -114,6 +118,9 @@ class PostgresJobRepository:
         source_message_id: str | None,
         profile_version: str,
         prompt_version: str | None = None,
+        source: str = "seek_email",
+        ingestion_mode: str = "automatic",
+        source_category: str = "recommendation",
     ) -> tuple[str, ...]:
         """Persist a ranked batch atomically and return database job ids."""
         job_ids: list[str] = []
@@ -126,6 +133,9 @@ class PostgresJobRepository:
                         source_message_id=source_message_id,
                         profile_version=profile_version,
                         prompt_version=prompt_version,
+                        source=source,
+                        ingestion_mode=ingestion_mode,
+                        source_category=source_category,
                     )
                 )
         return tuple(job_ids)
@@ -139,15 +149,13 @@ class PostgresJobRepository:
         prompt_version: str | None = None,
         statement_timeout_ms: int = 60000,
         retries: int = 3,
+        source: str = "seek_email",
+        ingestion_mode: str = "automatic",
+        source_category: str = "recommendation",
     ) -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
-        """Persist jobs independently, retrying transient PostgreSQL query cancellations.
-
-        Intended for large Gmail backfills where one slow upsert should not roll back
-        an entire recommendation email.
-        """
+        """Persist jobs independently, retrying transient PostgreSQL query cancellations."""
         job_ids: list[str] = []
         failures: list[dict[str, str]] = []
-
         timeout_value = f"{max(statement_timeout_ms, 1000)}ms"
 
         for job in batch.jobs:
@@ -166,6 +174,9 @@ class PostgresJobRepository:
                                 source_message_id=source_message_id,
                                 profile_version=profile_version,
                                 prompt_version=prompt_version,
+                                source=source,
+                                ingestion_mode=ingestion_mode,
+                                source_category=source_category,
                             )
                         )
                     last_error = None
@@ -243,8 +254,17 @@ class PostgresJobRepository:
         source_message_id: str | None,
         profile_version: str,
         prompt_version: str | None,
+        source: str,
+        ingestion_mode: str,
+        source_category: str,
     ) -> str:
-        job_record = job_record_from_ranked(job, source_message_id=source_message_id)
+        job_record = job_record_from_ranked(
+            job,
+            source_message_id=source_message_id,
+            source=source,
+            ingestion_mode=ingestion_mode,
+            source_category=source_category,
+        )
         job_payload = _jsonb_fields(job_record, ("requirements",))
         row = conn.execute(_JOB_UPSERT_SQL, job_payload).fetchone()
         if not row:
