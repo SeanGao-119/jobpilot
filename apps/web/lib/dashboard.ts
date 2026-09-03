@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { dashboardFixture } from "./qa-fixtures";
 
 export type DashboardJob = {
   id: string;
@@ -10,7 +11,9 @@ export type DashboardJob = {
   discovered_at: string;
   source_url: string | null;
   ingestion_mode: "manual" | "automatic";
-  source_category: "manual_url" | "job_alert" | "recommendation" | "other";
+  source_category: "manual_url" | "job_alert" | "recommendation" | "recruiter" | "network" | "other";
+  platform: "seek" | "linkedin" | "zeil" | "trademe" | "other";
+  opportunity_kind: "job" | "recruiter" | "network";
   status: string;
 };
 
@@ -29,6 +32,7 @@ export async function getDashboardData(): Promise<{
   stats: DashboardStats;
   jobs: DashboardJob[];
 }> {
+  if (process.env.JOBPILOT_QA_FIXTURE === "1") return dashboardFixture() as { stats: DashboardStats; jobs: DashboardJob[] };
   const rows = await sql<DashboardJob[]>`
     with latest_matches as (
       select distinct on (job_id)
@@ -50,6 +54,8 @@ export async function getDashboardData(): Promise<{
       j.source_url,
       j.ingestion_mode::text,
       j.source_category::text,
+      j.platform::text,
+      j.opportunity_kind::text,
       coalesce(a.status::text, 'discovered') as status
     from jobs j
     left join latest_matches lm on lm.job_id = j.id

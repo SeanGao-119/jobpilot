@@ -4,9 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { sql } from "../lib/db";
+import {
+  canonicalJobUrl,
+  detectPlatform,
+  externalIdForUrl,
+  fetchPublicJobPosting,
+  sourceForPlatform,
+  type OpportunityKind,
+  type ParsedJobPosting,
+} from "../lib/job-sources";
 
-const SEEK_HOSTS = ["seek.co.nz", "seek.com"];
-const JOB_ID_RE = /\/job\/(\d+)/;
 const DETAIL_QUERY = `
   query jobDetails($jobId: ID!) {
     jobDetails(id: $jobId) {
@@ -30,24 +37,6 @@ type SeekJob = {
   advertiser?: { name?: string | null } | null;
   location?: { label?: string | null } | null;
 };
-
-function isSeekHost(hostname: string) {
-  const host = hostname.toLowerCase().replace(/\.$/, "");
-  return SEEK_HOSTS.some((root) => host === root || host.endsWith(`.${root}`));
-}
-
-function parseSeekUrl(value: string) {
-  const url = new URL(value.trim());
-  if (!(["http:", "https:"].includes(url.protocol)) || !isSeekHost(url.hostname)) {
-    throw new Error("Please paste a SEEK job URL.");
-  }
-  const match = JOB_ID_RE.exec(url.pathname);
-  if (!match) throw new Error("No SEEK job ID was found in that URL.");
-  return {
-    jobId: match[1],
-    canonicalUrl: `https://www.seek.co.nz/job/${match[1]}`,
-  };
-}
 
 function stripHtml(value: string) {
   return value
@@ -96,53 +85,105 @@ async function fetchSeekJob(jobId: string): Promise<SeekJob> {
 }
 
 function messageFor(error: unknown) {
-  return error instanceof Error ? error.message : "Could not import this SEEK job.";
+  return error instanceof Error ? error.message : "Could not import this opportunity.";
 }
 
-export async function addSeekJobUrl(formData: FormData) {
+function opportunityKind(value: FormDataEntryValue | null): OpportunityKind {
+  if (value === "recruiter" || value === "network") return value;
+  return "job";
+}
+
+function manualText(formData: FormData, key: string, max: number) {
+  return String(formData.get(key) ?? "").trim().slice(0, max) || null;
+}
+
+export async function addJobUrl(formData: FormData) {
   let destination = "/";
   try {
     const rawUrl = String(formData.get("url") ?? "");
-    const { jobId, canonicalUrl } = parseSeekUrl(rawUrl);
+    const detected = detectPlatform(rawUrl);
+    const kind = opportunityKind(formData.get("opportunity_kind"));
+    if (detected.platform !== "linkedin" && kind !== "job") {
+      throw new Error("Recruiter and network entries currently require a LinkedIn URL.");
+    }
+    const externalId = externalIdForUrl(detected.platform, detected.url);
+    const canonicalUrl = canonicalJobUrl(detected.platform, detected.url, externalId);
+    const source = sourceForPlatform(detected.platform);
 
     const existing = await sql<{ id: string; title: string }[]>`
       select id::text, title
       from jobs
-      where source_external_id = ${jobId}
-        and source_url like '%seek%'
+      where source_external_id = ${externalId}
+        and platform = ${detected.platform}::job_platform
       order by discovered_at asc
       limit 1
     `;
     if (existing.length) {
       destination = `/?imported=${encodeURIComponent(`${existing[0].title} is already in JobPilot`)}`;
     } else {
-      const job = await fetchSeekJob(jobId);
-      const description = stripHtml(job.content);
+      let parsed: ParsedJobPosting = {
+        title: null, company: null, location: null, employmentType: null,
+        salaryText: null, description: null, postedAt: null, expiresAt: null,
+      };
+      if (detected.platform === "seek" && kind === "job" && /^\d+$/.test(externalId)) {
+        const job = await fetchSeekJob(externalId);
+        parsed = {
+          title: job.title,
+          company: job.advertiser?.name ?? null,
+          location: job.location?.label ?? null,
+          employmentType: job.workTypes?.label ?? null,
+          salaryText: job.salary?.label ?? null,
+          description: stripHtml(job.content),
+          postedAt: null,
+          expiresAt: null,
+        };
+      } else if (kind === "job") {
+        try {
+          parsed = await fetchPublicJobPosting(canonicalUrl);
+        } catch (error) {
+          if (!manualText(formData, "title", 180) || !manualText(formData, "company", 180)) throw error;
+        }
+      }
+
+      const title = manualText(formData, "title", 180)
+        ?? parsed.title
+        ?? (kind === "recruiter" ? "Recruiter conversation" : "Professional connection");
+      const company = manualText(formData, "company", 180)
+        ?? parsed.company
+        ?? (kind === "job" ? `${detected.platform.toUpperCase()} employer` : "LinkedIn");
+      const description = manualText(formData, "description", 16000) ?? parsed.description ?? "";
+      const category = kind === "job" ? "manual_url" : kind;
       await sql`
         insert into jobs (
           source, source_external_id, source_url,
-          ingestion_mode, source_category,
+          ingestion_mode, source_category, platform, opportunity_kind,
           title, company, location, employment_type, salary_text,
-          jd_raw, jd_clean, requirements
+          jd_raw, jd_clean, requirements, posted_at, expires_at
         ) values (
-          'seek_url'::job_source,
-          ${jobId},
+          ${source}::job_source,
+          ${externalId},
           ${canonicalUrl},
           'manual'::ingestion_mode,
-          'manual_url'::source_category,
-          ${job.title},
-          ${job.advertiser?.name ?? "Unknown employer"},
-          ${job.location?.label ?? null},
-          ${job.workTypes?.label ?? null},
-          ${job.salary?.label ?? null},
+          ${category}::source_category,
+          ${detected.platform}::job_platform,
+          ${kind}::opportunity_kind,
+          ${title},
+          ${company},
+          ${parsed.location},
+          ${parsed.employmentType},
+          ${parsed.salaryText},
           ${description},
           ${description},
-          '{}'::jsonb
+          '{}'::jsonb,
+          ${parsed.postedAt},
+          ${parsed.expiresAt}
         )
         on conflict (source, source_external_id) do update set
           source_url = excluded.source_url,
           ingestion_mode = excluded.ingestion_mode,
           source_category = excluded.source_category,
+          platform = excluded.platform,
+          opportunity_kind = excluded.opportunity_kind,
           title = excluded.title,
           company = excluded.company,
           location = excluded.location,
@@ -152,7 +193,7 @@ export async function addSeekJobUrl(formData: FormData) {
           jd_clean = excluded.jd_clean,
           updated_at = now()
       `;
-      destination = `/?imported=${encodeURIComponent(job.title)}`;
+      destination = `/?imported=${encodeURIComponent(`${title} added from ${detected.platform}`)}`;
     }
   } catch (error) {
     destination = `/?import_error=${encodeURIComponent(messageFor(error))}`;

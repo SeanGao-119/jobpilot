@@ -15,12 +15,13 @@ ConnectFn = Callable[[str], Any]
 _JOB_UPSERT_SQL = """
 insert into jobs (
   source, source_external_id, source_url, source_message_id,
-  ingestion_mode, source_category,
+  ingestion_mode, source_category, platform, opportunity_kind,
   title, company, location, employment_type, salary_text,
   jd_raw, jd_clean, requirements
 ) values (
   %(source)s, %(source_external_id)s, %(source_url)s, %(source_message_id)s,
   %(ingestion_mode)s::ingestion_mode, %(source_category)s::source_category,
+  %(platform)s::job_platform, %(opportunity_kind)s::opportunity_kind,
   %(title)s, %(company)s, %(location)s, %(employment_type)s, %(salary_text)s,
   %(jd_raw)s, %(jd_clean)s, %(requirements)s
 )
@@ -29,6 +30,8 @@ on conflict (source, source_external_id) do update set
   source_message_id = excluded.source_message_id,
   ingestion_mode = excluded.ingestion_mode,
   source_category = excluded.source_category,
+  platform = excluded.platform,
+  opportunity_kind = excluded.opportunity_kind,
   title = excluded.title,
   company = excluded.company,
   location = excluded.location,
@@ -121,6 +124,8 @@ class PostgresJobRepository:
         source: str = "seek_email",
         ingestion_mode: str = "automatic",
         source_category: str = "recommendation",
+        platform: str = "seek",
+        opportunity_kind: str = "job",
     ) -> tuple[str, ...]:
         """Persist a ranked batch atomically and return database job ids."""
         job_ids: list[str] = []
@@ -136,6 +141,8 @@ class PostgresJobRepository:
                         source=source,
                         ingestion_mode=ingestion_mode,
                         source_category=source_category,
+                        platform=platform,
+                        opportunity_kind=opportunity_kind,
                     )
                 )
         return tuple(job_ids)
@@ -152,6 +159,8 @@ class PostgresJobRepository:
         source: str = "seek_email",
         ingestion_mode: str = "automatic",
         source_category: str = "recommendation",
+        platform: str = "seek",
+        opportunity_kind: str = "job",
     ) -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
         """Persist jobs independently, retrying transient PostgreSQL query cancellations."""
         job_ids: list[str] = []
@@ -177,6 +186,8 @@ class PostgresJobRepository:
                                 source=source,
                                 ingestion_mode=ingestion_mode,
                                 source_category=source_category,
+                                platform=platform,
+                                opportunity_kind=opportunity_kind,
                             )
                         )
                     last_error = None
@@ -257,6 +268,8 @@ class PostgresJobRepository:
         source: str,
         ingestion_mode: str,
         source_category: str,
+        platform: str,
+        opportunity_kind: str,
     ) -> str:
         job_record = job_record_from_ranked(
             job,
@@ -264,6 +277,8 @@ class PostgresJobRepository:
             source=source,
             ingestion_mode=ingestion_mode,
             source_category=source_category,
+            platform=platform,
+            opportunity_kind=opportunity_kind,
         )
         job_payload = _jsonb_fields(job_record, ("requirements",))
         row = conn.execute(_JOB_UPSERT_SQL, job_payload).fetchone()

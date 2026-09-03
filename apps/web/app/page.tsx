@@ -1,4 +1,4 @@
-import { addSeekJobUrl } from "./actions";
+import { addJobUrl } from "./actions";
 import { getDashboardData } from "../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,8 @@ function sourceLabel(category: string) {
   if (category === "manual_url") return "Manual URL";
   if (category === "job_alert") return "Job alert";
   if (category === "recommendation") return "Recommendation";
+  if (category === "recruiter") return "Recruiter";
+  if (category === "network") return "Network";
   return "Other";
 }
 
@@ -31,22 +33,40 @@ export default async function HomePage({ searchParams }: PageProps) {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">JOBPILOT V0.5</p>
+          <p className="eyebrow">JOBPILOT V0.6</p>
           <h1>Job search command centre</h1>
-          <p className="subtitle">SEEK ingestion, evidence matching, unified application packets and outcome tracking.</p>
+          <p className="subtitle">One opportunity pool across SEEK, LinkedIn, ZEIL and Trade Me.</p>
         </div>
-        <div className="live"><span />Live database</div>
+        <div className="topActions">
+          <a className="button" href="/evidence">Evidence Bank</a>
+          <div className="live"><span />Live database</div>
+        </div>
       </header>
 
       <section className="importPanel">
         <div>
           <p className="eyebrow">ADD OPPORTUNITY</p>
-          <h2>Paste a SEEK job URL</h2>
-          <p className="muted">Manual imports are tagged separately from Job Alerts and Recommendations.</p>
+          <h2>Add an opportunity URL</h2>
+          <p className="muted">Jobs from SEEK, LinkedIn, ZEIL and Trade Me. LinkedIn recruiter and network leads are supported too.</p>
         </div>
-        <form action={addSeekJobUrl} className="urlImportForm">
-          <input name="url" type="url" required placeholder="https://www.seek.co.nz/job/12345678" aria-label="SEEK job URL" />
-          <button className="primaryButton" type="submit">Add job</button>
+        <form action={addJobUrl} className="urlImportForm opportunityForm">
+          <div className="urlRow">
+            <input name="url" type="url" required placeholder="Paste a SEEK, LinkedIn, ZEIL or Trade Me URL" aria-label="Opportunity URL" />
+            <select name="opportunity_kind" aria-label="Opportunity type" defaultValue="job">
+              <option value="job">Job</option>
+              <option value="recruiter">LinkedIn recruiter</option>
+              <option value="network">LinkedIn connection</option>
+            </select>
+            <button className="primaryButton" type="submit">Add to pool</button>
+          </div>
+          <details className="importFallback">
+            <summary>Page blocked? Add details manually</summary>
+            <div>
+              <input name="title" placeholder="Role or contact title" />
+              <input name="company" placeholder="Company" />
+              <textarea name="description" placeholder="Optional job description or context" rows={4} />
+            </div>
+          </details>
         </form>
         {imported && <p className="importMessage success">{imported}</p>}
         {importError && <p className="importMessage error">{importError}</p>}
@@ -100,7 +120,9 @@ export default async function HomePage({ searchParams }: PageProps) {
                   <td>
                     <div className="sourceTags">
                       <span className={`sourceTag ${job.ingestion_mode}`}>{job.ingestion_mode}</span>
+                      <span className={`sourceTag platform ${job.platform}`}>{job.platform}</span>
                       <span className="sourceTag">{sourceLabel(job.source_category)}</span>
+                      {job.opportunity_kind !== "job" && <span className="sourceTag">{job.opportunity_kind}</span>}
                     </div>
                   </td>
                   <td>
@@ -113,7 +135,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 </tr>
               ))}
               {jobs.length === 0 && (
-                <tr><td colSpan={8} className="empty">No jobs yet. Paste a SEEK URL above or run jobpilot daily to sync Gmail.</td></tr>
+                <tr><td colSpan={8} className="empty">No opportunities yet. Add a URL above or run JobPilot daily to sync SEEK and LinkedIn alerts.</td></tr>
               )}
             </tbody>
           </table>

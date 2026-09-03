@@ -3,14 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import YAML from "yaml";
-
 import { aiProviderName, generateJson } from "./ai";
 import { sql } from "./db";
+import { evidenceContentHash, generationEvidence } from "./evidence-store";
 import {
   buildResumeSnapshot,
   coverageScore,
-  evidenceRegistry,
+  type EvidenceItem,
   mapRequirements,
   type Profile,
   type RequirementMatch,
@@ -22,7 +21,7 @@ import {
 } from "./evidence";
 
 const execFileAsync = promisify(execFile);
-const GENERATOR_VERSION = "v0.5-application-packet";
+const GENERATOR_VERSION = "v0.6-application-packet";
 
 const root = () => path.resolve(process.cwd(), "../..");
 const outDir = (jobId: string) => path.join(root(), "apps/web/public/generated", jobId);
@@ -34,6 +33,8 @@ type JobRecord = {
   location: string | null;
   jd_clean: string | null;
   requirements: unknown;
+  posted_at: string | null;
+  expires_at: string | null;
 };
 
 type CoverParagraph = {
@@ -56,6 +57,16 @@ export type PdfLayout = {
   page_count: number;
   page_character_counts: number[];
   second_page_balance: number | null;
+  page_fill_ratios: number[];
+  budget: PageBudget | null;
+  status: "pass" | "fail";
+};
+
+export type PageBudget = {
+  target_pages: 1 | 2;
+  estimated_total_lines: number;
+  capacity_lines: number;
+  section_line_counts: Record<"summary" | "skills" | "work" | "projects" | "education" | "languages", number>;
   status: "pass" | "fail";
 };
 
@@ -75,6 +86,10 @@ export type ApplicationQaReport = {
   duplicate_evidence: string[];
   skills_without_evidence: string[];
   excluded_review_metrics: string[];
+  copied_phrases: string[];
+  contact_issues: string[];
+  timeline_issues: string[];
+  locked_evidence_issues: string[];
   resume_layout: PdfLayout;
   cover_letter_layout: PdfLayout;
   checks: QaCheck[];
@@ -94,17 +109,14 @@ function month(value: string) {
   return `${names[Number(m) - 1] ?? m} ${year}`;
 }
 
-async function profile(): Promise<Profile> {
-  return YAML.parse(await readFile(path.join(root(), "resume/facts/profile.yaml"), "utf8")) as Profile;
-}
-
 async function prompt(name: string) {
   return readFile(path.join(root(), "prompts", name), "utf8");
 }
 
 async function job(jobId: string): Promise<JobRecord> {
   const rows = await sql<JobRecord[]>`
-    select id::text, title, company, location, jd_clean, requirements
+    select id::text, title, company, location, jd_clean, requirements,
+           posted_at::text, expires_at::text
     from jobs
     where id = ${jobId}::uuid
     limit 1
@@ -117,8 +129,9 @@ async function planResume(
   p: Profile,
   j: JobRecord,
   requirementMap: RequirementMatch[],
+  registry: EvidenceItem[],
 ): Promise<ResumePlan> {
-  const registry = evidenceRegistry(p);
+  const usableIds = new Set(registry.filter((item) => item.status === "verified").map((item) => item.id));
   const system = await prompt("application-packet.md");
   const selectionRegistry = {
     summary_facts: p.summary_facts.map((fact, index) => ({ index, fact })),
@@ -126,7 +139,7 @@ async function planResume(
       id: item.id,
       company: item.company,
       title: item.title,
-      facts: item.facts.map((fact) => ({ id: fact.id, claim: fact.claim, tags: fact.evidence_tags ?? [] })),
+      facts: item.facts.filter((fact) => usableIds.has(fact.id)).map((fact) => ({ id: fact.id, claim: fact.claim, tags: fact.evidence_tags ?? [] })),
     })),
     projects: p.projects.map((item) => ({
       id: item.id,
@@ -134,7 +147,7 @@ async function planResume(
       category: item.category,
       technologies: item.technologies,
       source_experience_ids: item.source_experience_ids ?? [],
-      facts: item.facts.filter((fact) => (fact.status ?? "verified") === "verified"),
+      facts: item.facts.filter((fact) => usableIds.has(fact.id)),
     })),
     supported_skills: skillEvidenceCatalog(p, registry),
   };
@@ -233,7 +246,38 @@ async function compile(texPath: string, masterDir?: string) {
   return texPath.replace(/\.tex$/, ".pdf");
 }
 
-export async function inspectPdf(pdfPath: string): Promise<PdfLayout> {
+function wrappedLines(value: string, width = 96) {
+  return Math.max(1, Math.ceil(value.length / width));
+}
+
+export function estimateResumePageBudget(p: Profile, snapshot: ResumeSnapshot): PageBudget {
+  const sectionLineCounts = {
+    summary: 2 + wrappedLines(snapshot.summary, 105),
+    skills: 1 + snapshot.skills.reduce((sum, row) => sum + wrappedLines(`${row.category}: ${row.items.join(", ")}`, 105), 0),
+    work: 1 + snapshot.experience.reduce((sum, role) => sum + 2 + role.bullets.reduce((lines, bullet) => lines + wrappedLines(bullet.text, 94), 0), 0),
+    projects: snapshot.projects.length
+      ? 1 + snapshot.projects.reduce((sum, project) => sum + 2 + project.bullets.reduce((lines, bullet) => lines + wrappedLines(bullet.text, 94), 0), 0)
+      : 0,
+    education: 1 + snapshot.education.reduce((sum, item, index) => sum + 2 + (index === 0 && item.concentrations?.length ? 1 : 0) + (item.awards?.length ? 1 : 0), 0),
+    languages: p.languages.length ? 2 : 0,
+  };
+  const total = Object.values(sectionLineCounts).reduce((sum, value) => sum + value, 0);
+  const targetPages: 1 | 2 = total <= 58 ? 1 : 2;
+  const sectionPass = sectionLineCounts.summary <= 5
+    && sectionLineCounts.skills <= 8
+    && sectionLineCounts.work <= 30
+    && sectionLineCounts.projects <= 14
+    && sectionLineCounts.education <= 10;
+  return {
+    target_pages: targetPages,
+    estimated_total_lines: total,
+    capacity_lines: targetPages * 58,
+    section_line_counts: sectionLineCounts,
+    status: sectionPass && total <= targetPages * 58 ? "pass" : "fail",
+  };
+}
+
+export async function inspectPdf(pdfPath: string, budget: PageBudget | null = null): Promise<PdfLayout> {
   try {
     const { stdout: info } = await execFileAsync("pdfinfo", [pdfPath], { timeout: 15000 });
     const pageCount = Number(/^Pages:\s+(\d+)/m.exec(info)?.[1] ?? 0);
@@ -243,31 +287,41 @@ export async function inspectPdf(pdfPath: string): Promise<PdfLayout> {
       counts.push(stdout.replace(/\s+/g, "").length);
     }
     const secondPageBalance = pageCount === 2 && counts[0] ? Number((counts[1] / counts[0]).toFixed(2)) : null;
-    const pass = pageCount === 1 || (pageCount === 2 && (secondPageBalance ?? 0) >= 0.32);
-    return { page_count: pageCount, page_character_counts: counts, second_page_balance: secondPageBalance, status: pass ? "pass" : "fail" };
+    const fillRatios = counts.map((count) => Number(Math.min(1, count / 2200).toFixed(2)));
+    const balanced = pageCount === 1 || (pageCount === 2 && (secondPageBalance ?? 0) >= 0.55);
+    const matchesBudget = !budget || (budget.target_pages === 1 ? pageCount === 1 : pageCount <= 2);
+    const pass = pageCount > 0 && pageCount <= 2 && balanced && matchesBudget && (budget?.status ?? "pass") === "pass";
+    return {
+      page_count: pageCount,
+      page_character_counts: counts,
+      second_page_balance: secondPageBalance,
+      page_fill_ratios: fillRatios,
+      budget,
+      status: pass ? "pass" : "fail",
+    };
   } catch {
-    return { page_count: 0, page_character_counts: [], second_page_balance: null, status: "fail" };
+    return { page_count: 0, page_character_counts: [], second_page_balance: null, page_fill_ratios: [], budget, status: "fail" };
   }
 }
 
-async function writeResume(p: Profile, plan: ResumePlan, jobId: string) {
+async function writeResume(p: Profile, plan: ResumePlan, registry: EvidenceItem[], jobId: string) {
   const masterDir = path.join(root(), "resume/master");
   const out = outDir(jobId);
   await mkdir(out, { recursive: true });
   const texPath = path.join(out, "resume.tex");
 
   let compact = false;
-  let snapshot = buildResumeSnapshot(p, plan, compact);
+  let snapshot = buildResumeSnapshot(p, plan, compact, registry);
   await writeFile(texPath, await renderResumeTex(p, snapshot), "utf8");
   let pdfPath = await compile(texPath, masterDir);
-  let layout = await inspectPdf(pdfPath);
+  let layout = await inspectPdf(pdfPath, estimateResumePageBudget(p, snapshot));
 
   if (layout.status === "fail") {
     compact = true;
-    snapshot = buildResumeSnapshot(p, plan, compact);
+    snapshot = buildResumeSnapshot(p, plan, compact, registry);
     await writeFile(texPath, await renderResumeTex(p, snapshot), "utf8");
     pdfPath = await compile(texPath, masterDir);
-    layout = await inspectPdf(pdfPath);
+    layout = await inspectPdf(pdfPath, estimateResumePageBudget(p, snapshot));
   }
   return { snapshot, layout, compact, texPath, pdfPath };
 }
@@ -296,7 +350,7 @@ function normalizeCoverDraft(raw: unknown, allowedEvidenceIds: Set<string>) {
   }).slice(0, 5);
   if (paragraphs.length < 3) throw new Error("AI provider returned an incomplete cover letter");
   for (const paragraph of paragraphs) {
-    if (paragraph.purpose === "evidence" && !paragraph.evidence_ids.length) {
+    if (!paragraph.evidence_ids.length) {
       invalidEvidenceIds.push(`Unmapped evidence paragraph: ${paragraph.text.slice(0, 90)}`);
     }
   }
@@ -355,6 +409,103 @@ async function checkConsistency(j: JobRecord, snapshot: ResumeSnapshot, draft: C
   };
 }
 
+function words(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9+#. ]/g, " ").split(/\s+/).filter(Boolean);
+}
+
+export function deterministicCopiedPhrases(snapshot: ResumeSnapshot, draft: CoverLetterDraft) {
+  const resumeTexts = [
+    snapshot.summary,
+    ...snapshot.experience.flatMap((item) => item.bullets.map((bullet) => bullet.text)),
+    ...snapshot.projects.flatMap((item) => item.bullets.map((bullet) => bullet.text)),
+  ];
+  const copied = new Set<string>();
+  for (const paragraph of draft.paragraphs) {
+    const paragraphWords = words(paragraph.text);
+    const paragraphText = paragraphWords.join(" ");
+    for (const resumeText of resumeTexts) {
+      const sourceWords = words(resumeText);
+      for (let index = 0; index <= sourceWords.length - 10; index += 1) {
+        const phrase = sourceWords.slice(index, index + 10).join(" ");
+        if (paragraphText.includes(phrase)) copied.add(phrase);
+      }
+    }
+  }
+  return [...copied].slice(0, 12);
+}
+
+function validMonth(value: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function monthNumber(value: string) {
+  const [year, monthValue] = value.split("-").map(Number);
+  return year * 12 + monthValue;
+}
+
+export function validateCandidateProfile(p: Profile) {
+  const contactIssues: string[] = [];
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.candidate.email)) contactIssues.push("Candidate email is invalid");
+  if (!/^\+64\s\d(?:[\d ]{6,})$/.test(p.candidate.phone)) contactIssues.push("Candidate phone is not in +64 international format");
+  if (!(p.candidate.location ?? "").trim()) contactIssues.push("Candidate location is missing");
+  if (!(p.candidate.work_rights?.statement ?? "").trim()) contactIssues.push("Work-right statement is missing");
+
+  const timelineIssues: string[] = [];
+  const periods = [
+    ...p.experience.map((item) => ({ label: item.company, start: item.start, end: item.end })),
+    ...p.education.map((item) => ({ label: item.institution, start: item.start, end: item.end })),
+  ];
+  for (const period of periods) {
+    if (!validMonth(period.start) || !validMonth(period.end)) {
+      timelineIssues.push(`${period.label} has an invalid YYYY-MM date`);
+    } else if (monthNumber(period.start) > monthNumber(period.end)) {
+      timelineIssues.push(`${period.label} ends before it starts`);
+    }
+  }
+  const validPeriods = periods
+    .filter((period) => validMonth(period.start) && validMonth(period.end))
+    .map((period) => ({ start: monthNumber(period.start), end: monthNumber(period.end) }))
+    .sort((a, b) => a.start - b.start);
+  let coveredUntil = validPeriods[0]?.end ?? 0;
+  for (const period of validPeriods.slice(1)) {
+    if (period.start - coveredUntil > 24) timelineIssues.push("Candidate timeline contains an unexplained gap longer than 24 months");
+    coveredUntil = Math.max(coveredUntil, period.end);
+  }
+  return { contactIssues: [...new Set(contactIssues)], timelineIssues: [...new Set(timelineIssues)] };
+}
+
+function validateJobDates(j: JobRecord) {
+  const issues: string[] = [];
+  const posted = j.posted_at ? new Date(j.posted_at) : null;
+  const expires = j.expires_at ? new Date(j.expires_at) : null;
+  if (posted && Number.isNaN(posted.valueOf())) issues.push("Job posted date is invalid");
+  if (expires && Number.isNaN(expires.valueOf())) issues.push("Job expiry date is invalid");
+  if (posted && expires && !Number.isNaN(posted.valueOf()) && !Number.isNaN(expires.valueOf()) && posted > expires) {
+    issues.push("Job expiry precedes its posted date");
+  }
+  return issues;
+}
+
+function lockedEvidenceIssues(registry: EvidenceItem[], snapshot: ResumeSnapshot) {
+  const selected = new Set(snapshot.selected_evidence_ids);
+  const rendered = new Map([
+    ...snapshot.experience.flatMap((item) => item.bullets.map((bullet) => [bullet.evidence_id, bullet.text] as const)),
+    ...snapshot.projects.flatMap((item) => item.bullets.map((bullet) => [bullet.evidence_id, bullet.text] as const)),
+  ]);
+  const issues: string[] = [];
+  for (const item of registry.filter((candidate) => candidate.locked && selected.has(candidate.id))) {
+    if (item.locked_content_hash && evidenceContentHash(item) !== item.locked_content_hash) {
+      issues.push(`${item.id} changed after it was locked`);
+    }
+    if (item.kind === "summary") {
+      if (!snapshot.summary.includes(item.text)) issues.push(`${item.id} was rewritten despite its lock`);
+    } else if (rendered.get(item.id) !== item.text) {
+      issues.push(`${item.id} was rewritten despite its lock`);
+    }
+  }
+  return [...new Set(issues)];
+}
+
 export function renderCoverLetterTex(p: Profile, company: string, title: string, draft: CoverLetterDraft) {
   const paragraphs = draft.paragraphs.map((item) => latex(item.text)).join("\n\n");
   const date = new Date().toLocaleDateString("en-NZ", {
@@ -382,12 +533,19 @@ async function application(jobId: string) {
   return rows[0].id;
 }
 
-async function recordDocument(appId: string, type: "resume" | "cover_letter", format: "tex" | "pdf", url: string, profileVersion: string) {
+async function recordDocument(
+  appId: string,
+  packetId: string,
+  type: "resume" | "cover_letter",
+  format: "tex" | "pdf",
+  url: string,
+  profileVersion: string,
+) {
   await sql`
     insert into generated_documents (
-      application_id, document_type, format, storage_path, generator_version, source_profile_version, approved
+      application_id, packet_id, document_type, format, storage_path, generator_version, source_profile_version, approved
     ) values (
-      ${appId}::uuid, ${type}, ${format}, ${url}, ${GENERATOR_VERSION}, ${profileVersion}, false
+      ${appId}::uuid, ${packetId}::uuid, ${type}, ${format}, ${url}, ${GENERATOR_VERSION}, ${profileVersion}, false
     )
   `;
 }
@@ -410,6 +568,10 @@ function buildQaReport(args: {
   snapshot: ResumeSnapshot;
   resumeLayout: PdfLayout;
   coverLayout: PdfLayout;
+  copiedPhrases: string[];
+  contactIssues: string[];
+  timelineIssues: string[];
+  lockedEvidenceIssues: string[];
 }): ApplicationQaReport {
   const unsupported = [...new Set([...args.invalidEvidenceIds, ...args.consistency.unsupported_claims])];
   const alignmentPass = args.consistency.alignment_score >= 90 && !unsupported.length && !args.consistency.contradictions.length;
@@ -444,7 +606,9 @@ function buildQaReport(args: {
       id: "resume_layout",
       label: "Resume page layout",
       status: args.resumeLayout.status === "pass" ? "pass" : "fail",
-      detail: args.resumeLayout.page_count ? `${args.resumeLayout.page_count} page(s); balanced A4 output` : "PDF layout could not be verified",
+      detail: args.resumeLayout.page_count
+        ? `${args.resumeLayout.page_count} page(s); ${args.resumeLayout.budget?.estimated_total_lines ?? "?"}/${args.resumeLayout.budget?.capacity_lines ?? "?"} estimated lines`
+        : "PDF layout could not be verified",
     },
     {
       id: "cover_layout",
@@ -458,6 +622,30 @@ function buildQaReport(args: {
       status: alignmentPass ? "pass" : "fail",
       detail: `${args.consistency.alignment_score}% alignment`,
     },
+    {
+      id: "copying",
+      label: "Complementary cover letter",
+      status: args.copiedPhrases.length ? "fail" : "pass",
+      detail: args.copiedPhrases.length ? `${args.copiedPhrases.length} resume phrase(s) copied too closely` : "Cover letter adds context without copying resume sentences",
+    },
+    {
+      id: "contact",
+      label: "Contact and work rights",
+      status: args.contactIssues.length ? "fail" : "pass",
+      detail: args.contactIssues.length ? args.contactIssues.join("; ") : "Contact fields and work-right statement are valid",
+    },
+    {
+      id: "timeline",
+      label: "Dates and timeline",
+      status: args.timelineIssues.length ? "fail" : "pass",
+      detail: args.timelineIssues.length ? args.timelineIssues.join("; ") : "Candidate and job dates are internally consistent",
+    },
+    {
+      id: "locks",
+      label: "Locked evidence integrity",
+      status: args.lockedEvidenceIssues.length ? "fail" : "pass",
+      detail: args.lockedEvidenceIssues.length ? args.lockedEvidenceIssues.join("; ") : `${args.snapshot.locked_evidence_ids.length} selected locked fact(s) preserved exactly`,
+    },
   ];
   return {
     ready: checks.every((check) => check.status !== "fail"),
@@ -468,6 +656,10 @@ function buildQaReport(args: {
     duplicate_evidence: args.duplicates,
     skills_without_evidence: args.skillsWithoutEvidence,
     excluded_review_metrics: args.snapshot.excluded_review_metrics,
+    copied_phrases: args.copiedPhrases,
+    contact_issues: args.contactIssues,
+    timeline_issues: args.timelineIssues,
+    locked_evidence_issues: args.lockedEvidenceIssues,
     resume_layout: args.resumeLayout,
     cover_letter_layout: args.coverLayout,
     checks,
@@ -475,34 +667,43 @@ function buildQaReport(args: {
 }
 
 export async function generateApplicationPacket(jobId: string) {
-  const [p, j] = await Promise.all([profile(), job(jobId)]);
-  const registry = evidenceRegistry(p);
+  const [{ profile: p, registry, selection }, j] = await Promise.all([generationEvidence(jobId), job(jobId)]);
+  if (selection.mode === "manual" && !registry.some((item) => item.status === "verified")) {
+    throw new Error("Manual evidence selection is empty. Select verified evidence or return to automatic selection.");
+  }
   const terms = requirementTerms(j.requirements, j.jd_clean ?? "");
   const requirementMap = mapRequirements(terms, registry);
   const coverage = coverageScore(requirementMap);
-  const plan = await planResume(p, j, requirementMap);
+  const plan = await planResume(p, j, requirementMap, registry);
 
   // Resume is rendered, inspected and frozen before the cover letter sees any candidate evidence.
-  const resume = await writeResume(p, plan, jobId);
+  const resume = await writeResume(p, plan, registry, jobId);
   const resumeHash = createHash("sha256").update(JSON.stringify(resume.snapshot)).digest("hex");
 
   let cover = await generateCoverDraft(j, resume.snapshot, requirementMap);
   let consistency = await checkConsistency(j, resume.snapshot, cover.draft);
-  if (cover.invalidEvidenceIds.length || consistency.unsupported_claims.length || consistency.contradictions.length || consistency.alignment_score < 90) {
+  let copiedPhrases = [...new Set([...consistency.copied_phrases, ...deterministicCopiedPhrases(resume.snapshot, cover.draft)])];
+  if (cover.invalidEvidenceIds.length || consistency.unsupported_claims.length || consistency.contradictions.length || copiedPhrases.length || consistency.alignment_score < 90) {
     const feedback = [
       ...cover.invalidEvidenceIds,
       ...consistency.unsupported_claims,
       ...consistency.contradictions,
+      ...copiedPhrases.map((phrase) => `Paraphrase instead of copying: ${phrase}`),
       ...(consistency.alignment_score < 90 ? [`Previous alignment score was ${consistency.alignment_score}; use fewer, more directly supported claims.`] : []),
     ];
     cover = await generateCoverDraft(j, resume.snapshot, requirementMap, feedback);
     consistency = await checkConsistency(j, resume.snapshot, cover.draft);
+    copiedPhrases = [...new Set([...consistency.copied_phrases, ...deterministicCopiedPhrases(resume.snapshot, cover.draft)])];
   }
   const coverFiles = await writeCoverLetter(p, j, cover.draft, jobId);
 
   const supported = new Set(skillEvidenceCatalog(p, registry).map((item) => item.skill));
   const skillsWithoutEvidence = plan.selected_skills.filter((skill) => !supported.has(skill));
   const duplicates = duplicateEvidence(p, resume.snapshot);
+  const profileValidation = validateCandidateProfile(p);
+  const contactIssues = profileValidation.contactIssues;
+  const timelineIssues = [...profileValidation.timelineIssues, ...validateJobDates(j)];
+  const lockIssues = lockedEvidenceIssues(registry, resume.snapshot);
   const qa = buildQaReport({
     coverage,
     consistency,
@@ -512,6 +713,10 @@ export async function generateApplicationPacket(jobId: string) {
     snapshot: resume.snapshot,
     resumeLayout: resume.layout,
     coverLayout: coverFiles.layout,
+    copiedPhrases,
+    contactIssues,
+    timelineIssues,
+    lockedEvidenceIssues: lockIssues,
   });
 
   const appId = await application(jobId);
@@ -520,10 +725,54 @@ export async function generateApplicationPacket(jobId: string) {
   const resumePdfUrl = `/generated/${jobId}/resume.pdf`;
   const coverTexUrl = `/generated/${jobId}/cover-letter.tex`;
   const coverPdfUrl = `/generated/${jobId}/cover-letter.pdf`;
-  await recordDocument(appId, "resume", "tex", resumeTexUrl, profileVersion);
-  await recordDocument(appId, "resume", "pdf", resumePdfUrl, profileVersion);
-  await recordDocument(appId, "cover_letter", "tex", coverTexUrl, profileVersion);
-  await recordDocument(appId, "cover_letter", "pdf", coverPdfUrl, profileVersion);
+  const coverLetterMapping = cover.draft.paragraphs.map((paragraph, index) => ({
+    paragraph: index + 1,
+    purpose: paragraph.purpose,
+    evidence_ids: paragraph.evidence_ids,
+    job_requirements: paragraph.job_requirements,
+  }));
+  const targetProfile = {
+    target_title: plan.target_title,
+    positioning: plan.positioning,
+    evidence_coverage: coverage,
+    evidence_selection_mode: selection.mode,
+    compact_layout: resume.compact,
+  };
+  const packetRows = await sql<Array<{ id: string }>>`
+    insert into application_packets (
+      application_id, packet_version, status, target_profile, requirement_map,
+      resume_plan, final_resume, resume_hash, cover_letter_mapping, qa_report, provider
+    ) values (
+      ${appId}::uuid, ${GENERATOR_VERSION}, ${qa.ready ? "ready_to_apply" : "needs_review"}::packet_status,
+      ${JSON.stringify(targetProfile)}::jsonb, ${JSON.stringify(requirementMap)}::jsonb,
+      ${JSON.stringify(plan)}::jsonb, ${JSON.stringify(resume.snapshot)}::jsonb, ${resumeHash},
+      ${JSON.stringify(coverLetterMapping)}::jsonb, ${JSON.stringify(qa)}::jsonb, ${aiProviderName()}
+    )
+    returning id::text
+  `;
+  const packetId = packetRows[0].id;
+  await sql.begin(async (transaction) => {
+    for (const evidenceId of resume.snapshot.selected_evidence_ids) {
+      await transaction`
+        insert into application_packet_evidence (packet_id, evidence_id, usage, paragraph_number)
+        values (${packetId}::uuid, ${evidenceId}, 'resume', 0)
+        on conflict do nothing
+      `;
+    }
+    for (const mapping of coverLetterMapping) {
+      for (const evidenceId of mapping.evidence_ids) {
+        await transaction`
+          insert into application_packet_evidence (packet_id, evidence_id, usage, paragraph_number)
+          values (${packetId}::uuid, ${evidenceId}, 'cover_letter', ${mapping.paragraph})
+          on conflict do nothing
+        `;
+      }
+    }
+  });
+  await recordDocument(appId, packetId, "resume", "tex", resumeTexUrl, profileVersion);
+  await recordDocument(appId, packetId, "resume", "pdf", resumePdfUrl, profileVersion);
+  await recordDocument(appId, packetId, "cover_letter", "tex", coverTexUrl, profileVersion);
+  await recordDocument(appId, packetId, "cover_letter", "pdf", coverPdfUrl, profileVersion);
 
   await sql`
     update applications
@@ -547,22 +796,14 @@ export async function generateApplicationPacket(jobId: string) {
   const packet = {
     packet_version: GENERATOR_VERSION,
     status: qa.ready ? "ready_to_apply" : "needs_review",
-    target_profile: {
-      target_title: plan.target_title,
-      positioning: plan.positioning,
-      evidence_coverage: coverage,
-    },
+    packet_id: packetId,
+    target_profile: targetProfile,
     requirement_map: requirementMap,
     resume_plan: plan,
     final_resume: resume.snapshot,
     resume_hash: resumeHash,
     compact_layout: resume.compact,
-    cover_letter_mapping: cover.draft.paragraphs.map((paragraph, index) => ({
-      paragraph: index + 1,
-      purpose: paragraph.purpose,
-      evidence_ids: paragraph.evidence_ids,
-      job_requirements: paragraph.job_requirements,
-    })),
+    cover_letter_mapping: coverLetterMapping,
     qa_report: qa,
     provider: aiProviderName(),
     generated_at: new Date().toISOString(),

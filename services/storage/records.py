@@ -13,6 +13,8 @@ def job_record_from_ranked(
     source: str = "seek_email",
     ingestion_mode: str = "automatic",
     source_category: str = "recommendation",
+    platform: str = "seek",
+    opportunity_kind: str = "job",
 ) -> dict[str, Any]:
     """Map a ranked SEEK job to the columns used by database.jobs."""
     return {
@@ -22,6 +24,8 @@ def job_record_from_ranked(
         "source_message_id": source_message_id,
         "ingestion_mode": ingestion_mode,
         "source_category": source_category,
+        "platform": platform,
+        "opportunity_kind": opportunity_kind,
         "title": job.title,
         "company": job.company,
         "location": job.location,

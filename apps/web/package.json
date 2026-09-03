@@ -1,9 +1,9 @@
 {
   "name": "jobpilot-web",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-server.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -49,6 +49,13 @@ def gmail_seek_query() -> str:
     return os.environ.get("GMAIL_SEEK_QUERY", "from:seek newer_than:14d").strip()
 
 
+def gmail_linkedin_query() -> str:
+    return os.environ.get(
+        "GMAIL_LINKEDIN_QUERY",
+        "{from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com} newer_than:14d",
+    ).strip()
+
+
 def _credentials() -> Credentials:
     token_path = gmail_token_path()
     credentials_path = gmail_credentials_path()

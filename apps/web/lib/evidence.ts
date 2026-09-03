@@ -1,8 +1,9 @@
-export type EvidenceStatus = "verified" | "needs_review";
+export type EvidenceStatus = "verified" | "draft" | "needs_review";
 
 export type ProfileFact = {
   id: string;
   claim: string;
+  status?: EvidenceStatus;
   metrics?: string[];
   metrics_status?: EvidenceStatus;
   evidence_tags?: string[];
@@ -67,6 +68,16 @@ export type EvidenceItem = {
   text: string;
   tags: string[];
   status: EvidenceStatus;
+  locked: boolean;
+  locked_content_hash?: string;
+};
+
+export type EvidenceControl = {
+  evidence_id: string;
+  status: EvidenceStatus;
+  locked: boolean;
+  content_hash: string;
+  notes?: string | null;
 };
 
 export type RequirementMatch = {
@@ -107,6 +118,7 @@ export type ResumeSnapshot = {
   skills: Array<{ category: string; items: string[] }>;
   education: Profile["education"];
   selected_evidence_ids: string[];
+  locked_evidence_ids: string[];
   excluded_review_metrics: string[];
 };
 
@@ -166,7 +178,7 @@ function evidenceSearchText(item: EvidenceItem) {
 export function evidenceRegistry(profile: Profile): EvidenceItem[] {
   const items: EvidenceItem[] = [];
   profile.summary_facts.forEach((text, index) => {
-    items.push({ id: `summary:${index}`, kind: "summary", label: "Professional summary", text, tags: [], status: "verified" });
+    items.push({ id: `summary:${index}`, kind: "summary", label: "Professional summary", text, tags: [], status: "verified", locked: false });
   });
   for (const experience of profile.experience) {
     for (const fact of experience.facts) {
@@ -177,7 +189,8 @@ export function evidenceRegistry(profile: Profile): EvidenceItem[] {
         label: `${experience.company} - ${experience.title}`,
         text: [fact.claim, ...verifiedMetrics].join("; "),
         tags: fact.evidence_tags ?? [],
-        status: "verified",
+        status: fact.status ?? "verified",
+        locked: false,
       });
     }
   }
@@ -190,6 +203,7 @@ export function evidenceRegistry(profile: Profile): EvidenceItem[] {
         text: fact.claim,
         tags: [project.category, ...project.technologies],
         status: fact.status ?? "verified",
+        locked: false,
       });
     }
   }
@@ -201,9 +215,30 @@ export function evidenceRegistry(profile: Profile): EvidenceItem[] {
       text: `${education.degree}; ${(education.concentrations ?? []).join(", ")}; ${(education.coursework ?? []).join(", ")}`,
       tags: education.concentrations ?? [],
       status: "verified",
+      locked: false,
     });
   });
   return items;
+}
+
+export function applyEvidenceControls(
+  registry: EvidenceItem[],
+  controls: EvidenceControl[],
+  manualSelection?: Set<string> | null,
+): EvidenceItem[] {
+  const byId = new Map(controls.map((control) => [control.evidence_id, control]));
+  return registry.map((item) => {
+    const control = byId.get(item.id);
+    const status = manualSelection && !manualSelection.has(item.id)
+      ? "draft"
+      : control?.status ?? item.status;
+    return {
+      ...item,
+      status,
+      locked: control?.locked ?? item.locked,
+      locked_content_hash: control?.locked ? control.content_hash : undefined,
+    };
+  });
 }
 
 function stringArray(value: unknown): string[] {
@@ -319,23 +354,24 @@ export function validateResumePlan(
   requirementMap: RequirementMatch[],
   registry: EvidenceItem[],
 ): ResumePlan {
+  const usableIds = new Set(registry.filter((item) => item.status === "verified").map((item) => item.id));
   const experienceById = new Map(profile.experience.map((item) => [item.id, item]));
   const requestedExperience = new Map((raw.experience ?? []).map((item) => [item.id, item.fact_ids ?? []]));
   const experience = profile.experience.map((item) => {
-    const factIds = new Set(item.facts.map((fact) => fact.id));
+    const factIds = new Set(item.facts.map((fact) => fact.id).filter((id) => usableIds.has(id)));
     const requested = [...new Set(requestedExperience.get(item.id) ?? [])].filter((id) => factIds.has(id)).slice(0, 3);
-    const fallback = [...item.facts]
+    const fallback = [...item.facts].filter((fact) => usableIds.has(fact.id))
       .sort((a, b) => relevanceScore(`${b.claim} ${(b.evidence_tags ?? []).join(" ")}`, requirementMap)
         - relevanceScore(`${a.claim} ${(a.evidence_tags ?? []).join(" ")}`, requirementMap))
       .map((fact) => fact.id);
     const selected = [...requested, ...fallback.filter((id) => !requested.includes(id))].slice(0, 3);
     return { id: item.id, fact_ids: selected };
-  }).filter((item) => experienceById.has(item.id));
+  }).filter((item) => experienceById.has(item.id) && item.fact_ids.length > 0);
 
   const selectedExperienceIds = new Set(experience.map((item) => item.id));
   const eligibleProjects = profile.projects.filter((project) =>
     !(project.source_experience_ids ?? []).some((id) => selectedExperienceIds.has(id))
-    && project.facts.some((fact) => (fact.status ?? "verified") === "verified"),
+    && project.facts.some((fact) => usableIds.has(fact.id)),
   );
   const requestedProjects = [...new Set(raw.project_ids ?? [])]
     .map((id) => eligibleProjects.find((project) => project.id === id))
@@ -360,13 +396,30 @@ export function validateResumePlan(
     .map((item) => item.display);
 
   const summary = [...new Set(raw.summary_fact_indexes ?? [])]
-    .filter((index) => Number.isInteger(index) && index >= 0 && index < profile.summary_facts.length)
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < profile.summary_facts.length && usableIds.has(`summary:${index}`))
     .slice(0, 3);
-  if (!summary.length) summary.push(...profile.summary_facts.slice(0, 2).map((_, index) => index));
+  if (!summary.length) {
+    summary.push(...profile.summary_facts.map((_, index) => index).filter((index) => usableIds.has(`summary:${index}`)).slice(0, 2));
+  }
+
+  const backedPositioning = new Set(
+    requirementMap
+      .filter((item) => item.status !== "gap" && item.evidence_ids.some((id) => usableIds.has(id)))
+      .map((item) => norm(item.requirement)),
+  );
+  const requestedPositioning = [...new Set(raw.positioning ?? [])]
+    .map(String)
+    .filter((item) => backedPositioning.has(norm(item)))
+    .slice(0, 6);
+  const fallbackPositioning = requirementMap
+    .filter((item) => item.status !== "gap" && item.evidence_ids.some((id) => usableIds.has(id)))
+    .map((item) => item.requirement);
+  const positioning = [...requestedPositioning, ...fallbackPositioning.filter((item) => !requestedPositioning.some((value) => norm(value) === norm(item)))]
+    .slice(0, 5);
 
   return {
     target_title: String(raw.target_title ?? "Data Engineer").trim() || "Data Engineer",
-    positioning: [...new Set(raw.positioning ?? [])].map(String).filter(Boolean).slice(0, 6),
+    positioning,
     summary_fact_indexes: summary,
     experience,
     project_ids: projectIds,
@@ -380,8 +433,12 @@ function month(value: string) {
   return `${names[Number(m) - 1] ?? m} ${year}`;
 }
 
-export function buildResumeSnapshot(profile: Profile, plan: ResumePlan, compact = false): ResumeSnapshot {
-  const registry = evidenceRegistry(profile);
+export function buildResumeSnapshot(
+  profile: Profile,
+  plan: ResumePlan,
+  compact = false,
+  registry: EvidenceItem[] = evidenceRegistry(profile),
+): ResumeSnapshot {
   const evidenceById = new Map(registry.map((item) => [item.id, item]));
   const experienceById = new Map(profile.experience.map((item) => [item.id, item]));
   const projectById = new Map(profile.projects.map((item) => [item.id, item]));
@@ -390,7 +447,7 @@ export function buildResumeSnapshot(profile: Profile, plan: ResumePlan, compact 
   const experience = plan.experience.map((selected) => {
     const item = experienceById.get(selected.id)!;
     const factById = new Map(item.facts.map((fact) => [fact.id, fact]));
-    const ids = selected.fact_ids.slice(0, compact ? 2 : 3);
+    const ids = selected.fact_ids.filter((id) => evidenceById.get(id)?.status === "verified").slice(0, compact ? 2 : 3);
     const bullets = ids.map((id) => {
       const fact = factById.get(id)!;
       if (fact.metrics?.length && fact.metrics_status !== "verified") {
@@ -410,7 +467,7 @@ export function buildResumeSnapshot(profile: Profile, plan: ResumePlan, compact 
 
   const projects = plan.project_ids.slice(0, compact ? 1 : 2).map((id) => {
     const project = projectById.get(id)!;
-    const facts = project.facts.filter((fact) => (fact.status ?? "verified") === "verified").slice(0, compact ? 2 : 3);
+    const facts = project.facts.filter((fact) => evidenceById.get(fact.id)?.status === "verified").slice(0, compact ? 2 : 3);
     return {
       id: project.id,
       name: project.name,
@@ -429,8 +486,18 @@ export function buildResumeSnapshot(profile: Profile, plan: ResumePlan, compact 
     if (items.length) skills.push({ category: CATEGORY_LABELS[category] ?? category, items });
   }
 
-  const summaryFacts = plan.summary_fact_indexes.map((index) => profile.summary_facts[index]).filter(Boolean);
-  const summary = `${summaryFacts.join(". ").replace(/\.+$/, "")}.`;
+  const summaryFacts = plan.summary_fact_indexes
+    .filter((index) => evidenceById.get(`summary:${index}`)?.status === "verified")
+    .map((index) => ({ text: profile.summary_facts[index], locked: evidenceById.get(`summary:${index}`)?.locked ?? false }))
+    .filter(Boolean);
+  const lead = plan.positioning.length
+    ? `${plan.target_title} with evidence-backed experience in ${plan.positioning.join(", ")}.`
+    : `${plan.target_title} with commercial engineering experience.`;
+  const supportingFacts = summaryFacts
+    .filter((fact) => fact.locked || !norm(fact.text).startsWith(norm(plan.target_title)))
+    .slice(0, compact ? 1 : 2);
+  const summaryText = supportingFacts.map((fact) => fact.text).join(". ").replace(/\.+$/, "");
+  const summary = `${lead} ${summaryText}${supportingFacts.length ? "." : ""}`.trim();
   const selectedEvidenceIds = [
     ...plan.summary_fact_indexes.map((index) => `summary:${index}`),
     ...experience.flatMap((item) => item.bullets.map((bullet) => bullet.evidence_id)),
@@ -445,6 +512,7 @@ export function buildResumeSnapshot(profile: Profile, plan: ResumePlan, compact 
     skills,
     education: profile.education,
     selected_evidence_ids: [...new Set(selectedEvidenceIds)],
+    locked_evidence_ids: [...new Set(selectedEvidenceIds.filter((id) => evidenceById.get(id)?.locked))],
     excluded_review_metrics: [...new Set(excludedReviewMetrics)],
   };
 }

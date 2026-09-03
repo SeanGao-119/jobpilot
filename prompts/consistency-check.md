@@ -2,7 +2,7 @@
 
 Audit a cover-letter draft against a frozen final resume and its evidence IDs.
 
-Flag any candidate claim that is not directly supported, any contradiction, and any sentence that copies the resume too closely. Do not reward persuasive wording over factual alignment.
+Flag any candidate claim that is not directly supported, any contradiction, every paragraph without evidence IDs, and any sequence of ten or more words copied from the resume. Do not reward persuasive wording over factual alignment.
 
 Return one JSON object:
 
@@ -14,4 +14,3 @@ Return one JSON object:
   "copied_phrases": []
 }
 ```
-

@@ -15,7 +15,7 @@ from services.ingestion.seek_email import parse_seek_recommendation_email
 from services.ingestion.seek_job import fetch_seek_job
 from services.ingestion.seek_link import resolve_seek_tracking_url
 from services.matching.scorer import score_job
-from services.pipeline.daily import cleanup_stale_jobs, sync_seek_gmail
+from services.pipeline.daily import cleanup_stale_jobs, sync_job_gmail
 from services.pipeline.rank_email import rank_seek_email
 from services.storage.postgres import PostgresJobRepository
 
@@ -108,7 +108,15 @@ def _cmd_persist_email(args: argparse.Namespace) -> int:
 
 def _cmd_sync_gmail(args: argparse.Namespace) -> int:
     profile = _load_profile(args.profile)
-    result = sync_seek_gmail(database_url=_database_url(), profile=profile, profile_version=_profile_version(args.profile), query=args.query, limit=args.limit, workers=args.workers)
+    result = sync_job_gmail(
+        database_url=_database_url(),
+        profile=profile,
+        profile_version=_profile_version(args.profile),
+        seek_query=args.query,
+        linkedin_query=args.linkedin_query,
+        limit=args.limit,
+        workers=args.workers,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -122,7 +130,15 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
 def _cmd_daily(args: argparse.Namespace) -> int:
     profile = _load_profile(args.profile)
     database_url = _database_url()
-    sync_result = sync_seek_gmail(database_url=database_url, profile=profile, profile_version=_profile_version(args.profile), query=args.query, limit=args.limit, workers=args.workers)
+    sync_result = sync_job_gmail(
+        database_url=database_url,
+        profile=profile,
+        profile_version=_profile_version(args.profile),
+        seek_query=args.query,
+        linkedin_query=args.linkedin_query,
+        limit=args.limit,
+        workers=args.workers,
+    )
     cleanup_result = cleanup_stale_jobs(database_url=database_url, skip_score=args.skip_score, low_score=args.low_score, skip_after_days=args.skip_after_days, low_after_days=args.low_after_days)
     print(json.dumps({"sync": sync_result, "cleanup": cleanup_result}, ensure_ascii=False, indent=2))
     return 0
@@ -152,6 +168,7 @@ def _add_rank_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_daily_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", default="resume/facts/profile.yaml")
     parser.add_argument("--query", default=None, help="Override Gmail search query")
+    parser.add_argument("--linkedin-query", default=None, help="Override LinkedIn Gmail search query")
     parser.add_argument("--limit", type=int, default=25, help="Maximum Gmail messages to inspect")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--skip-score", type=float, default=45.0)
@@ -185,9 +202,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_rank_arguments(persist_email)
     persist_email.set_defaults(func=_cmd_persist_email)
 
-    sync_gmail = subparsers.add_parser("sync-gmail", help="Fetch new SEEK recommendation emails from Gmail and persist ranked jobs")
+    sync_gmail = subparsers.add_parser("sync-gmail", help="Fetch SEEK and LinkedIn job emails and persist ranked jobs")
     sync_gmail.add_argument("--profile", default="resume/facts/profile.yaml")
     sync_gmail.add_argument("--query", default=None)
+    sync_gmail.add_argument("--linkedin-query", default=None)
     sync_gmail.add_argument("--limit", type=int, default=25)
     sync_gmail.add_argument("--workers", type=int, default=4)
     sync_gmail.set_defaults(func=_cmd_sync_gmail)

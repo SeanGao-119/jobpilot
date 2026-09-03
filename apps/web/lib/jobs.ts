@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { jobFixture } from "./qa-fixtures";
 
 export type JobDetail = {
   id: string;
@@ -11,6 +12,8 @@ export type JobDetail = {
   jd_clean: string | null;
   requirements: unknown;
   discovered_at: string;
+  platform: string;
+  opportunity_kind: string;
   overall_score: number;
   technical_score: number | null;
   experience_score: number | null;
@@ -46,6 +49,7 @@ export type JobDetail = {
 };
 
 export async function getJobDetail(id: string): Promise<JobDetail | null> {
+  if (process.env.JOBPILOT_QA_FIXTURE === "1") return jobFixture(id) as JobDetail | null;
   const rows = await sql<JobDetail[]>`
     with latest_match as (
       select *
@@ -65,6 +69,8 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       j.jd_clean,
       j.requirements,
       j.discovered_at::text,
+      j.platform::text,
+      j.opportunity_kind::text,
       lm.overall_score::float8,
       lm.technical_score::float8,
       lm.experience_score::float8,
@@ -92,21 +98,20 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       s.comparable_count as salary_comparable_count,
       s.rationale as salary_rationale,
       s.evidence as salary_evidence,
-      packet.details->>'status' as packet_status,
-      packet.details->'target_profile' as packet_target_profile,
-      packet.details->'requirement_map' as packet_requirement_map,
-      packet.details->'cover_letter_mapping' as packet_cover_letter_mapping,
-      packet.details->'qa_report' as packet_qa_report
+      packet.status::text as packet_status,
+      packet.target_profile as packet_target_profile,
+      packet.requirement_map as packet_requirement_map,
+      packet.cover_letter_mapping as packet_cover_letter_mapping,
+      packet.qa_report as packet_qa_report
     from jobs j
     join latest_match lm on lm.job_id = j.id
     left join applications a on a.job_id = j.id
     left join salary_estimates s on s.job_id = j.id
     left join lateral (
-      select details
-      from application_events
+      select status, target_profile, requirement_map, cover_letter_mapping, qa_report
+      from application_packets
       where application_id = a.id
-        and event_type = 'application_packet_generated'
-      order by occurred_at desc
+      order by created_at desc
       limit 1
     ) packet on true
     where j.id = ${id}::uuid

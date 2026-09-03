@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 
+import { mapRequirements, requirementTerms } from "../../../lib/evidence";
+import { getEvidenceBank, getJobEvidenceSelection } from "../../../lib/evidence-store";
 import { getJobDetail } from "../../../lib/jobs";
+import { updateJobEvidence, useAutomaticEvidence } from "../../evidence/actions";
 import { generateApplication, markApplied, refreshSalaryIntelligence } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +84,11 @@ function money(value: number | null, currency = "NZD") {
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const job = await getJobDetail(id);
+  const [job, evidenceBank, evidenceSelection] = await Promise.all([
+    getJobDetail(id),
+    getEvidenceBank(),
+    getJobEvidenceSelection(id),
+  ]);
   if (!job) notFound();
 
   const matched = values(job.matched_evidence);
@@ -93,6 +100,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const requirements = packetRequirements(job.packet_requirement_map);
   const mappings = paragraphMappings(job.packet_cover_letter_mapping);
   const targetProfile = record(job.packet_target_profile);
+  const currentRequirementMap = mapRequirements(requirementTerms(job.requirements, job.jd_clean ?? ""), evidenceBank);
+  const autoEvidence = new Set([
+    "summary:0",
+    "summary:1",
+    ...currentRequirementMap.flatMap((item) => item.evidence_ids),
+  ]);
+  const selectedEvidence = new Set(evidenceSelection.mode === "manual" ? evidenceSelection.evidence_ids : autoEvidence);
+  const verifiedEvidence = evidenceBank.filter((item) => item.status === "verified");
 
   return (
     <main className="shell detailShell">
@@ -120,8 +135,36 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <button className="button" type="submit">Mark as Applied</button>
           </form>
         ) : <span className="appliedBadge">Applied ✓</span>}
-        {job.source_url && <a className="button" href={job.source_url} target="_blank" rel="noreferrer">Open SEEK ↗</a>}
+        {job.source_url && <a className="button" href={job.source_url} target="_blank" rel="noreferrer">Open {job.platform} ↗</a>}
       </section>
+
+      <details className="evidenceSelector" open={evidenceSelection.mode === "manual"}>
+        <summary>
+          <span><strong>Resume evidence</strong><small>{evidenceSelection.mode === "manual" ? `${selectedEvidence.size} manually selected` : "Automatic selection"}</small></span>
+          <span className={`selectionMode ${evidenceSelection.mode}`}>{evidenceSelection.mode}</span>
+        </summary>
+        <form action={updateJobEvidence.bind(null, id)}>
+          <div className="evidenceChoiceGrid">
+            {verifiedEvidence.map((item) => (
+              <label className="evidenceChoice" key={item.id}>
+                <input name="evidence_ids" type="checkbox" value={item.id} defaultChecked={selectedEvidence.has(item.id)} />
+                <span>
+                  <strong>{item.label}{item.locked ? " · Locked" : ""}</strong>
+                  <small>{item.text}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="selectorActions">
+            <button className="primaryButton" type="submit">Save manual selection</button>
+          </div>
+        </form>
+        {evidenceSelection.mode === "manual" && (
+          <form action={useAutomaticEvidence.bind(null, id)} className="autoSelectionForm">
+            <button className="button" type="submit">Return to automatic selection</button>
+          </form>
+        )}
+      </details>
 
       <section className={`packetCard ${qa?.ready ? "ready" : qa ? "review" : ""}`}>
         <div className="packetHead">

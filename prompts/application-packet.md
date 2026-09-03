@@ -10,6 +10,7 @@ Hard rules:
 5. Select only skills that have supplied evidence IDs.
 6. Keep the target title faithful to the advertised role and do not inflate seniority.
 7. Missing requirements remain gaps.
+8. If the supplied registry is a manual selection, do not substitute or restore omitted evidence.
 
 Return one JSON object with exactly these keys:
 
@@ -23,4 +24,3 @@ Return one JSON object with exactly these keys:
   "selected_skills": []
 }
 ```
-

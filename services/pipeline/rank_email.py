@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import httpx
 
 from services.analysis.requirements import ExtractedRequirements, extract_requirements
+from services.ingestion.job_page import fetch_public_job, resolve_public_job_url
+from services.ingestion.linkedin_email import parse_linkedin_job_email
 from services.ingestion.models import JobRecommendation
 from services.ingestion.seek_email import parse_seek_recommendation_email
 from services.ingestion.seek_job import SeekJobPage, fetch_seek_job
@@ -159,7 +161,25 @@ def rank_seek_email(
 ) -> RankBatchResult:
     """Resolve, fetch, extract, and rank all jobs from one SEEK recommendation email."""
     parsed = parse_seek_recommendation_email(subject=subject, body=body, message_id=message_id)
-    recommendations = list(parsed.recommendations)
+    return _rank_recommendations(
+        recommendations=list(parsed.recommendations),
+        advertised_count=parsed.advertised_count,
+        profile=profile,
+        max_workers=max_workers,
+        resolver=resolver,
+        fetcher=fetcher,
+    )
+
+
+def _rank_recommendations(
+    *,
+    recommendations: list[JobRecommendation],
+    advertised_count: int | None,
+    profile: Mapping,
+    max_workers: int,
+    resolver: ResolveFn,
+    fetcher: FetchFn,
+) -> RankBatchResult:
     jobs: list[RankedSeekJob] = []
     failures: list[RankFailure] = []
 
@@ -186,10 +206,32 @@ def rank_seek_email(
     jobs.sort(key=lambda item: (-item.match.overall_score, item.company.lower(), item.title.lower()))
     failures.sort(key=lambda item: (item.company.lower(), item.external_id))
     return RankBatchResult(
-        advertised_count=parsed.advertised_count,
+        advertised_count=advertised_count,
         parsed_count=len(recommendations),
         ranked_count=len(jobs),
         failed_count=len(failures),
         jobs=tuple(jobs),
         failures=tuple(failures),
+    )
+
+
+def rank_linkedin_email(
+    *,
+    subject: str,
+    body: str,
+    profile: Mapping,
+    message_id: str | None = None,
+    max_workers: int = 4,
+    resolver: ResolveFn = resolve_public_job_url,
+    fetcher: FetchFn = fetch_public_job,
+) -> RankBatchResult:
+    """Resolve and rank LinkedIn job-alert cards into the shared opportunity pool."""
+    parsed = parse_linkedin_job_email(subject=subject, body=body, message_id=message_id)
+    return _rank_recommendations(
+        recommendations=list(parsed.recommendations),
+        advertised_count=None,
+        profile=profile,
+        max_workers=max_workers,
+        resolver=resolver,
+        fetcher=fetcher,
     )

@@ -6,10 +6,11 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from services.ingestion.gmail_seek import fetch_seek_messages
+from services.ingestion.gmail_seek import fetch_seek_messages, gmail_linkedin_query
+from services.ingestion.linkedin_email import classify_linkedin_email
 from services.ingestion.seek_email import classify_seek_email
 from services.pipeline.manual_url import sync_manual_seek_urls
-from services.pipeline.rank_email import rank_seek_email
+from services.pipeline.rank_email import rank_linkedin_email, rank_seek_email
 from services.storage.postgres import PostgresJobRepository
 
 
@@ -133,6 +134,120 @@ def sync_seek_gmail(
         limit=limit,
     )
     return output
+
+
+def sync_linkedin_gmail(
+    *,
+    database_url: str,
+    profile: dict[str, Any],
+    profile_version: str,
+    query: str | None = None,
+    limit: int = 25,
+    workers: int = 4,
+) -> dict[str, Any]:
+    """Import LinkedIn job-alert emails into the same ranked opportunity pool."""
+    repository = PostgresJobRepository(database_url)
+    messages = fetch_seek_messages(query=query or gmail_linkedin_query(), limit=limit)
+    output: dict[str, Any] = {
+        "messages_found": len(messages),
+        "messages_skipped": 0,
+        "messages_processed": 0,
+        "persisted_jobs": 0,
+        "failed_jobs": 0,
+        "database_failures": 0,
+        "messages": [],
+    }
+
+    for message in reversed(messages):
+        source_category = classify_linkedin_email(message.subject, message.body)
+        if _message_processed(database_url, message.message_id):
+            _refresh_message_source(database_url, message.message_id, source_category)
+            output["messages_skipped"] += 1
+            continue
+        try:
+            result = rank_linkedin_email(
+                subject=message.subject,
+                body=message.body,
+                message_id=message.message_id,
+                profile=profile,
+                max_workers=workers,
+            )
+        except Exception as exc:
+            output["messages_processed"] += 1
+            output["failed_jobs"] += 1
+            output["messages"].append(
+                {
+                    "message_id": message.message_id,
+                    "subject": message.subject,
+                    "source_category": source_category,
+                    "ranked_count": 0,
+                    "failed_count": 1,
+                    "failures": [{"stage": "ranking", "error": str(exc)}],
+                }
+            )
+            continue
+
+        item = {
+            "message_id": message.message_id,
+            "subject": message.subject,
+            "source_category": source_category,
+            "ranked_count": result.ranked_count,
+            "failed_count": result.failed_count,
+            "failures": [asdict(failure) for failure in result.failures],
+        }
+        if result.ranked_count:
+            ids, db_failures = repository.persist_batch_resilient(
+                result,
+                source_message_id=message.message_id,
+                profile_version=profile_version,
+                prompt_version="deterministic-v1",
+                statement_timeout_ms=60000,
+                retries=3,
+                source="linkedin_email",
+                ingestion_mode="automatic",
+                source_category=source_category,
+                platform="linkedin",
+                opportunity_kind="job",
+            )
+            item["job_ids"] = list(ids)
+            item["database_failures"] = list(db_failures)
+            output["persisted_jobs"] += len(ids)
+            output["database_failures"] += len(db_failures)
+        output["failed_jobs"] += result.failed_count
+        output["messages_processed"] += 1
+        output["messages"].append(item)
+
+    return output
+
+
+def sync_job_gmail(
+    *,
+    database_url: str,
+    profile: dict[str, Any],
+    profile_version: str,
+    seek_query: str | None = None,
+    linkedin_query: str | None = None,
+    limit: int = 25,
+    workers: int = 4,
+) -> dict[str, Any]:
+    return {
+        "seek": sync_seek_gmail(
+            database_url=database_url,
+            profile=profile,
+            profile_version=profile_version,
+            query=seek_query,
+            limit=limit,
+            workers=workers,
+        ),
+        "linkedin": sync_linkedin_gmail(
+            database_url=database_url,
+            profile=profile,
+            profile_version=profile_version,
+            query=linkedin_query,
+            limit=limit,
+            workers=workers,
+        ),
+    }
 
 
 def cleanup_stale_jobs(

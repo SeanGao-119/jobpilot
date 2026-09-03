@@ -7,11 +7,11 @@ JobPilot is a personal job-application operating system for discovering roles, m
 JobPilot has a working end-to-end path:
 
 ```text
-SEEK recommendation email
+SEEK + LinkedIn job-alert email
         ↓
-tracking-link resolution
+manual SEEK / LinkedIn / ZEIL / Trade Me URL
         ↓
-SEEK job detail ingestion
+platform-safe job detail ingestion
         ↓
 requirement extraction
         ↓
@@ -111,19 +111,30 @@ The dashboard queries Postgres and calls AI/search providers server-side; creden
 
 Terminal/alternative states: `rejected`, `withdrawn`, `expired`, `skipped`.
 
-## V0.5 application workspace
+## V0.6 application workspace
 
 Each job workspace includes:
 
 - detailed match breakdown and evidence;
+- a Master Evidence Bank with `Verified`, `Draft`, `Needs review`, and exact-fact locks;
+- automatic or per-job manual evidence selection;
 - one `Generate Application` action that freezes the resume before writing the cover letter;
 - requirement-to-evidence mapping and evidence coverage;
 - duplicate work/project suppression and evidence-backed skill selection;
 - resume/cover-letter consistency checks and visible quality gates;
+- normalized application-packet and evidence-mapping records in PostgreSQL;
 - `Mark as Applied` application tracking;
 - Salary Intelligence with market range, recommended ask, confidence and evidence links.
 
-Generated documents use a deterministic A4 XeLaTeX renderer. Resume output is inspected for page balance and automatically re-rendered with a compact evidence budget when needed. The cover letter can only use evidence IDs present in the frozen final resume, and both documents remain `Needs review` unless the quality checks pass.
+Generated documents use a deterministic A4 XeLaTeX renderer with section-level line budgets and PDF balance inspection. The cover letter can only use evidence IDs present in the frozen final resume; copied resume phrases, broken locks, invalid contact details, timeline errors, unsupported claims, and layout failures block `Ready to apply`.
+
+Manual imports accept SEEK, LinkedIn, ZEIL and Trade Me Jobs URLs. LinkedIn recruiter and network links can also be retained in the pool. The daily Gmail sync imports both SEEK and LinkedIn job-alert emails; override its LinkedIn query with `GMAIL_LINKEDIN_QUERY` when needed.
+
+Apply the V0.6 database migration before opening the updated dashboard:
+
+```bash
+psql "$DATABASE_URL" -f database/migrations/004_application_packets_and_sources.sql
+```
 
 Run the document regression test with XeLaTeX and Poppler installed:
 
