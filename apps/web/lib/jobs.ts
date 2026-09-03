@@ -38,6 +38,11 @@ export type JobDetail = {
   salary_comparable_count: number | null;
   salary_rationale: string | null;
   salary_evidence: unknown;
+  packet_status: string | null;
+  packet_target_profile: unknown;
+  packet_requirement_map: unknown;
+  packet_cover_letter_mapping: unknown;
+  packet_qa_report: unknown;
 };
 
 export async function getJobDetail(id: string): Promise<JobDetail | null> {
@@ -86,11 +91,24 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       s.confidence as salary_confidence,
       s.comparable_count as salary_comparable_count,
       s.rationale as salary_rationale,
-      s.evidence as salary_evidence
+      s.evidence as salary_evidence,
+      packet.details->>'status' as packet_status,
+      packet.details->'target_profile' as packet_target_profile,
+      packet.details->'requirement_map' as packet_requirement_map,
+      packet.details->'cover_letter_mapping' as packet_cover_letter_mapping,
+      packet.details->'qa_report' as packet_qa_report
     from jobs j
     join latest_match lm on lm.job_id = j.id
     left join applications a on a.job_id = j.id
     left join salary_estimates s on s.job_id = j.id
+    left join lateral (
+      select details
+      from application_events
+      where application_id = a.id
+        and event_type = 'application_packet_generated'
+      order by occurred_at desc
+      limit 1
+    ) packet on true
     where j.id = ${id}::uuid
     limit 1
   `;

@@ -111,16 +111,26 @@ The dashboard queries Postgres and calls AI/search providers server-side; creden
 
 Terminal/alternative states: `rejected`, `withdrawn`, `expired`, `skipped`.
 
-## V0.2 workspace
+## V0.5 application workspace
 
 Each job workspace includes:
 
 - detailed match breakdown and evidence;
-- `Generate Resume` and `Generate Cover Letter` workflow actions;
+- one `Generate Application` action that freezes the resume before writing the cover letter;
+- requirement-to-evidence mapping and evidence coverage;
+- duplicate work/project suppression and evidence-backed skill selection;
+- resume/cover-letter consistency checks and visible quality gates;
 - `Mark as Applied` application tracking;
 - Salary Intelligence with market range, recommended ask, confidence and evidence links.
 
-The document generation actions currently create auditable generation requests. The strict LaTeX renderer is being connected next; it must preserve the approved template's fonts, macros and layout and may only change evidence-grounded content.
+Generated documents use a deterministic A4 XeLaTeX renderer. Resume output is inspected for page balance and automatically re-rendered with a compact evidence budget when needed. The cover letter can only use evidence IDs present in the frozen final resume, and both documents remain `Needs review` unless the quality checks pass.
+
+Run the document regression test with XeLaTeX and Poppler installed:
+
+```bash
+cd apps/web
+npm run test:documents
+```
 
 ## Privacy
 

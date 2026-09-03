@@ -31,9 +31,9 @@ export default async function HomePage({ searchParams }: PageProps) {
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">JOBPILOT V0.4</p>
+          <p className="eyebrow">JOBPILOT V0.5</p>
           <h1>Job search command centre</h1>
-          <p className="subtitle">SEEK email ingestion, manual URL imports, automatic matching and application tracking.</p>
+          <p className="subtitle">SEEK ingestion, evidence matching, unified application packets and outcome tracking.</p>
         </div>
         <div className="live"><span />Live database</div>
       </header>

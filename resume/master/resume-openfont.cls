@@ -10,25 +10,24 @@
 
 \RequirePackage[english]{babel}
 \RequirePackage{fancyhdr}
-\RequirePackage[hmargin=1cm, vmargin=0.94cm]{geometry}
+\RequirePackage[a4paper,hmargin=1.15cm, vmargin=1.05cm]{geometry}
 \usepackage[hidelinks]{hyperref}
 \RequirePackage{titlesec}
 \RequirePackage{enumitem}
 \RequirePackage{tabularx}
 \RequirePackage{xcolor}
-\RequirePackage[normalem]{ulem}
 
-% Font compatibility layer.
-% The original template referenced legacy local lato-font.sty / raleway-font.sty.
-% Modern TeX Live ships the same Lato and Raleway families as standard packages.
-\RequirePackage[default]{lato}
-\RequirePackage[nosfdefault]{raleway}
+% Portable font layer: XeLaTeX can use the widely available URW Nimbus Sans
+% without depending on optional distro-specific lato/raleway LaTeX packages.
+\RequirePackage{fontspec}
+\setsansfont{Nimbus Sans}
+\renewcommand{\familydefault}{\sfdefault}
 
 % Preserve the original template macro names and font weights.
 \newcommand{\latoRegular}[1]{{\fontseries{m}\selectfont #1}}
-\newcommand{\customLatoLight}{\fontseries{l}\selectfont}
-\newcommand{\customLatoBlack}{\fontseries{k}\selectfont}
-\newcommand{\customRalewayMedium}{\ralewaymedium}
+\newcommand{\customLatoLight}{\fontseries{m}\selectfont}
+\newcommand{\customLatoBlack}{\bfseries}
+\newcommand{\customRalewayMedium}{\fontseries{m}\selectfont}
 
 % Current JobPilot template uses ProjectNoLink, so FontAwesome is not required.
 % Keep Project usable without forcing a legacy FontAwesome system font install.
@@ -105,20 +104,15 @@
 
 \newcommand{\Project}[2]{\runsubsection{\href{#2}{\uppercase{#1} \,\faExternalLink}}\hfill}
 \newcommand{\ProjectNoLink}[1]{\runsubsection{{\uppercase{#1}}}\hfill}
-\newcommand{\underlinedLink}[2]{\href{#1}{\uline{#2}}}
+\newcommand{\underlinedLink}[2]{\href{#1}{\underline{#2}}}
 \newcommand{\singleItem}[2]{\normalsize{\textbf{#1} #2}}
 \newcommand{\doubleItem}[4]{\singleItem{#1}{#2} & \singleItem{#3}{#4}}
 \newcommand{\sectionsep}[0]{\vspace{7pt}}
 
 \newenvironment{bullets}{
-\vspace{-1mm}
-\begin{itemize}
-\itemsep1pt
-\parskip1.5pt
-\parsep1.5pt
+\begin{itemize}[leftmargin=2em, topsep=2pt, itemsep=1pt, parsep=0pt, partopsep=0pt]
 }{
 \end{itemize}
-\vspace{-\topsep}
 }
 
 \newenvironment{skillList}{%
@@ -130,4 +124,3 @@
 
 \let\oldSection\section
 \renewcommand{\section}[1]{\oldSection{#1}\raggedright}
-\renewcommand{\underline}[1]{\uline{#1}}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { aiProviderName, generateJson } from "../../../lib/ai";
 import { sql } from "../../../lib/db";
-import { generateCoverLetter, generateResume } from "../../../lib/documents";
+import { generateApplicationPacket } from "../../../lib/documents";
 import { searchProviderName, searchWeb } from "../../../lib/search";
 
 async function ensureApplication(jobId: string) {
@@ -42,31 +42,29 @@ export async function markApplied(jobId: string) {
   revalidatePath(`/jobs/${jobId}`);
 }
 
-export async function requestDocument(jobId: string, documentType: "resume" | "cover_letter") {
+export async function generateApplication(jobId: string) {
   const applicationId = await ensureApplication(jobId);
   await sql`
     insert into application_events (
       application_id, event_type, source, details
     ) values (
       ${applicationId}::uuid,
-      'document_generation_requested',
+      'application_packet_generation_requested',
       'dashboard',
-      ${JSON.stringify({ document_type: documentType, ai_provider: aiProviderName() })}::jsonb
+      ${JSON.stringify({ documents: ["resume", "cover_letter"], ai_provider: aiProviderName() })}::jsonb
     )
   `;
 
-  const result = documentType === "resume"
-    ? await generateResume(jobId)
-    : await generateCoverLetter(jobId);
+  const result = await generateApplicationPacket(jobId);
 
   await sql`
     insert into application_events (
       application_id, event_type, source, details
     ) values (
       ${applicationId}::uuid,
-      'document_generated',
+      'application_packet_generation_completed',
       'dashboard',
-      ${JSON.stringify({ document_type: documentType, ...result })}::jsonb
+      ${JSON.stringify({ ready: result.qa.ready, provider: result.provider })}::jsonb
     )
   `;
 

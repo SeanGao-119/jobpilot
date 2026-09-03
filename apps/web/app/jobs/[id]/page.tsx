@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getJobDetail } from "../../../lib/jobs";
-import { markApplied, refreshSalaryIntelligence, requestDocument } from "./actions";
+import { generateApplication, markApplied, refreshSalaryIntelligence } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,51 @@ function salaryEvidence(input: unknown): Array<{ title: string; company: string;
   return input.filter((item): item is { title: string; company: string; location: string; salary: string; source_url: string } => {
     return Boolean(item && typeof item === "object" && "title" in item && "company" in item);
   });
+}
+
+type PacketCheck = { id: string; label: string; status: "pass" | "warning" | "fail"; detail: string };
+type PacketQa = {
+  ready: boolean;
+  evidence_coverage: number;
+  resume_cover_alignment: number;
+  checks: PacketCheck[];
+};
+type PacketRequirement = {
+  requirement: string;
+  priority: "critical" | "high" | "medium";
+  status: "matched" | "partial" | "gap";
+  evidence_ids: string[];
+};
+type ParagraphMapping = {
+  paragraph: number;
+  purpose: string;
+  evidence_ids: string[];
+  job_requirements: string[];
+};
+
+function record(input: unknown): Record<string, unknown> {
+  return input && typeof input === "object" ? input as Record<string, unknown> : {};
+}
+
+function packetQa(input: unknown): PacketQa | null {
+  const item = record(input);
+  if (!Array.isArray(item.checks)) return null;
+  return {
+    ready: Boolean(item.ready),
+    evidence_coverage: Number(item.evidence_coverage ?? 0),
+    resume_cover_alignment: Number(item.resume_cover_alignment ?? 0),
+    checks: item.checks.filter((check): check is PacketCheck => Boolean(check && typeof check === "object" && "label" in check)),
+  };
+}
+
+function packetRequirements(input: unknown): PacketRequirement[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is PacketRequirement => Boolean(item && typeof item === "object" && "requirement" in item && "status" in item));
+}
+
+function paragraphMappings(input: unknown): ParagraphMapping[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is ParagraphMapping => Boolean(item && typeof item === "object" && "paragraph" in item));
 }
 
 function score(value: number | null) {
@@ -44,6 +89,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const gaps = values(job.gaps);
   const comparables = salaryEvidence(job.salary_evidence);
   const hasSalaryEstimate = job.salary_estimate_min != null || job.salary_estimate_max != null;
+  const qa = packetQa(job.packet_qa_report);
+  const requirements = packetRequirements(job.packet_requirement_map);
+  const mappings = paragraphMappings(job.packet_cover_letter_mapping);
+  const targetProfile = record(job.packet_target_profile);
 
   return (
     <main className="shell detailShell">
@@ -61,11 +110,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       </header>
 
       <section className="actionBar">
-        <form action={requestDocument.bind(null, id, "resume")}>
-          <button className="primaryButton" type="submit">{job.resume_path ? "Regenerate Resume" : "Generate Resume"}</button>
-        </form>
-        <form action={requestDocument.bind(null, id, "cover_letter")}>
-          <button className="button" type="submit">{job.cover_letter_path ? "Regenerate Cover Letter" : "Generate Cover Letter"}</button>
+        <form action={generateApplication.bind(null, id)}>
+          <button className="primaryButton" type="submit">{job.resume_path ? "Regenerate Application" : "Generate Application"}</button>
         </form>
         {job.resume_path && <a className="button" href={job.resume_path} target="_blank" rel="noreferrer">Resume PDF ↗</a>}
         {job.cover_letter_path && <a className="button" href={job.cover_letter_path} target="_blank" rel="noreferrer">Cover Letter PDF ↗</a>}
@@ -75,6 +121,65 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </form>
         ) : <span className="appliedBadge">Applied ✓</span>}
         {job.source_url && <a className="button" href={job.source_url} target="_blank" rel="noreferrer">Open SEEK ↗</a>}
+      </section>
+
+      <section className={`packetCard ${qa?.ready ? "ready" : qa ? "review" : ""}`}>
+        <div className="packetHead">
+          <div>
+            <p className="eyebrow">APPLICATION PACKET</p>
+            <h2>{qa ? (qa.ready ? "Ready to apply" : "Needs review") : "Not generated"}</h2>
+            <p className="muted">
+              {qa
+                ? `${String(targetProfile.target_title ?? job.title)} · Resume frozen before cover letter generation`
+                : "Generate one evidence-linked resume and cover letter package."}
+            </p>
+          </div>
+          {qa && (
+            <div className="packetMetrics">
+              <span>Evidence<strong>{qa.evidence_coverage}%</strong></span>
+              <span>Resume ↔ CL<strong>{qa.resume_cover_alignment}%</strong></span>
+            </div>
+          )}
+        </div>
+
+        {qa && (
+          <div className="qualityGrid">
+            {qa.checks.map((check) => (
+              <div className={`qualityCheck ${check.status}`} key={check.id}>
+                <span>{check.status === "pass" ? "✓" : check.status === "warning" ? "!" : "×"}</span>
+                <div><strong>{check.label}</strong><small>{check.detail}</small></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {requirements.length > 0 && (
+          <div className="packetSubgrid">
+            <div>
+              <h3>Requirement evidence</h3>
+              <div className="requirementList">
+                {requirements.map((item) => (
+                  <span className={`requirement ${item.status}`} key={`${item.priority}-${item.requirement}`}>
+                    {item.status === "matched" ? "✓" : item.status === "partial" ? "△" : "×"} {item.requirement}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3>Cover letter evidence map</h3>
+              {mappings.length ? (
+                <ul className="mappingList">
+                  {mappings.map((item) => (
+                    <li key={item.paragraph}>
+                      <strong>Paragraph {item.paragraph}</strong>
+                      <span>{item.evidence_ids.length ? item.evidence_ids.join(", ") : item.purpose}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="muted">No mapping recorded.</p>}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="detailGrid">

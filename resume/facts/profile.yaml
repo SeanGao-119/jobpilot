@@ -1,20 +1,21 @@
-schema_version: 1
+schema_version: 2
 candidate:
-  name: "Zilin (Sean) Gao"
+  name: "Sean Gao"
+  legal_name: "Zilin Gao"
   email: "therinkao@gmail.com"
-  phone: "+64 (022) 091 1240"
+  phone: "+64 22 091 1240"
   github: "SeanGao-119"
   linkedin: "seangao-kun"
+  location: "Christchurch, New Zealand"
   location_country: "New Zealand"
   work_rights:
     statement: "Holds a valid New Zealand work visa"
     source: "master_resume"
 
 summary_facts:
-  - "Master of Applied Data Science graduate"
-  - "Hands-on experience in backend systems and data engineering"
-  - "Experience across Linux, MySQL, and AS400"
-  - "Uses Python, SQL, R, and Java"
+  - "Data Engineer with commercial experience in backend systems, database operations, and data engineering"
+  - "Master of Applied Data Science graduate from the University of Canterbury"
+  - "Hands-on experience with Python, SQL, Linux, MySQL, and AS400"
 
 experience:
   - id: chinasoft_backend_data_engineer
@@ -28,6 +29,7 @@ experience:
         claim: "Streamlined reconciliation on HSBC's AS400 using SQL and reusable scripts"
         metrics:
           - "approximately 20% improvement in data accuracy"
+        metrics_status: needs_review
         evidence_tags: [sql, as400, data_quality, automation, financial_services]
       - id: chinasoft_validation
         claim: "Hardened edge-case validations with BA and QA using test data and checklist design"
@@ -50,11 +52,13 @@ experience:
         claim: "Engineered core APIs and UI flows and optimized database queries"
         metrics:
           - "approximately 20% reduction in median page load"
+        metrics_status: needs_review
         evidence_tags: [api, backend, database, sql, performance]
       - id: jiuyuan_dashboard
         claim: "Consolidated stakeholder requirements into weekly KPI dashboards in Excel"
         metrics:
           - "approximately 50% reduction in manual report preparation time"
+        metrics_status: needs_review
         evidence_tags: [excel, dashboard, reporting, stakeholder_management, analytics]
       - id: jiuyuan_release
         claim: "Integrated frontend-backend changes with version control and basic CI steps and documented release notes and rollback plans"
@@ -74,11 +78,13 @@ experience:
         claim: "Automated alert triage with SQL and Python utilities"
         metrics:
           - "reduced MTTR from approximately 2 hours to under 45 minutes"
+        metrics_status: verified
         evidence_tags: [python, sql, automation, incident_management, sre]
       - id: tianyuan_db_ops
         claim: "Standardized database operations across multiple schemas including backups, audits, rollbacks, and account hygiene"
         metrics:
           - "sustained greater than 99.9% data integrity"
+        metrics_status: needs_review
         evidence_tags: [database, backup, audit, rollback, operations]
       - id: tianyuan_query_tuning
         claim: "Optimized slow queries and indexes and tuned routines and scheduled jobs"
@@ -94,60 +100,92 @@ projects:
     technologies: [PostGIS, Python, SQL, dbt, pandas, GeoPandas]
     summary: "Built a spatial ETL pipeline to enrich mobile device movement data with census and health datasets for urban mobility analysis"
     facts:
-      - "Engineered PostGIS spatial joins and CRS alignment using EPSG:4326 to link facility polygons with PIN movement records"
-      - "Implemented visitor-weighted aggregation by SA1 to generate demographic facility profiles"
-      - "Automated data cleaning and integration workflows in Python using pandas and GeoPandas"
-      - "Developed modular SQL views for repeatable joins"
-      - "Reduced manual preparation time by over 60%"
-      - "Established data quality checks for SA1 validity, population consistency, and spatial integrity"
-      - "Documented business logic and lineage via a data dictionary and typed code comments"
-      - "Produced interactive heatmaps and catchment visualizations for Bay of Plenty physical activity strategy"
+      - id: movement_spatial_joins
+        claim: "Engineered PostGIS spatial joins and CRS alignment using EPSG:4326 to link facility polygons with PIN movement records"
+      - id: movement_weighted_aggregation
+        claim: "Implemented visitor-weighted aggregation by SA1 to generate demographic facility profiles"
+      - id: movement_python_workflow
+        claim: "Automated data cleaning and integration workflows in Python using pandas and GeoPandas"
+      - id: movement_sql_views
+        claim: "Developed modular SQL views for repeatable joins"
+      - id: movement_preparation_time
+        claim: "Reduced manual preparation time by over 60%"
+        status: needs_review
+      - id: movement_quality_checks
+        claim: "Established data quality checks for SA1 validity, population consistency, and spatial integrity"
+      - id: movement_lineage
+        claim: "Documented business logic and lineage via a data dictionary and typed code comments"
+      - id: movement_visualisation
+        claim: "Produced interactive heatmaps and catchment visualizations for Bay of Plenty physical activity strategy"
 
   - id: as400_data_quality_toolkit
     name: "AS400 Data Quality Toolkit"
     category: "Data Engineering & Automation"
     technologies: [SQL, AS400, Python]
     summary: "Reusable scripts and runbooks to reconcile financial customer records on AS400 and standardize fixes across teams"
+    source_experience_ids: [chinasoft_backend_data_engineer]
     facts:
-      - "Engineered SQL routines to detect duplicates, invalid states, and cross-table inconsistencies"
-      - "Automated batch checks and summaries for UAT and production"
-      - "Standardized exception tags and rollback steps"
-      - "Authored playbooks adopted by multiple peer groups"
-      - "Instrumented lightweight logs and metrics for defect trends"
+      - id: as400_detect_inconsistencies
+        claim: "Engineered SQL routines to detect duplicates, invalid states, and cross-table inconsistencies"
+      - id: as400_batch_checks
+        claim: "Automated batch checks and summaries for UAT and production"
+      - id: as400_exception_process
+        claim: "Standardized exception tags and rollback steps"
+      - id: as400_playbooks
+        claim: "Authored playbooks adopted by multiple peer groups"
+      - id: as400_defect_metrics
+        claim: "Instrumented lightweight logs and metrics for defect trends"
 
   - id: db_ops_alert_triage
     name: "DB Ops Alert Triage Automation"
     category: "SRE-style Ops"
     technologies: [Python, SQL, Linux, Cron]
     summary: "Lightweight incident triage pipeline for database operations"
+    source_experience_ids: [tianyuan_database_engineer]
     facts:
-      - "Automated parsing of alert emails and logs into a normalized table"
-      - "Routed issues with severity and ownership hints"
-      - "Pre-attached suggested SQL checks and past resolutions for similar signatures"
-      - "Hardened schedules, retries, and notifications to avoid silent failures"
-      - "Documented SOPs and standardized post-incident notes"
+      - id: triage_parse_alerts
+        claim: "Automated parsing of alert emails and logs into a normalized table"
+      - id: triage_route_issues
+        claim: "Routed issues with severity and ownership hints"
+      - id: triage_suggest_checks
+        claim: "Pre-attached suggested SQL checks and past resolutions for similar signatures"
+      - id: triage_retries
+        claim: "Hardened schedules, retries, and notifications to avoid silent failures"
+      - id: triage_sops
+        claim: "Documented SOPs and standardized post-incident notes"
 
   - id: kpi_dashboard_suite
     name: "KPI Dashboard Suite"
     category: "Reporting & Stakeholder Enablement"
     technologies: [Excel, PivotTables, Charts, VBA]
+    source_experience_ids: [jiuyuan_fullstack]
     facts:
-      - "Consolidated requirements and modeled inputs and outputs for recurring metrics"
-      - "Built templated dashboards with pivots and charts"
-      - "Parameterized refresh workflows to reduce preparation time"
-      - "Established review rhythm with data checks, sign-off, and release notes"
-      - "Packaged a quick-start guide for non-developer stakeholders"
+      - id: kpi_model_requirements
+        claim: "Consolidated requirements and modeled inputs and outputs for recurring metrics"
+      - id: kpi_dashboard_templates
+        claim: "Built templated dashboards with pivots and charts"
+      - id: kpi_refresh_workflows
+        claim: "Parameterized refresh workflows to reduce preparation time"
+      - id: kpi_review_process
+        claim: "Established review rhythm with data checks, sign-off, and release notes"
+      - id: kpi_quick_start
+        claim: "Packaged a quick-start guide for non-developer stakeholders"
 
   - id: smart_campus
     name: "Smart Campus Information System"
     category: "Full-Stack Web App"
     technologies: [Java, MySQL, Cordova, Angular]
     facts:
-      - "Designed schema and implemented authentication and timetable flows"
-      - "Optimized database queries to lower page load"
-      - "Structured API endpoints and separated frontend-backend concerns"
-      - "Packaged the hybrid application via Cordova for an Android demo"
-      - "Introduced basic lint and test hooks"
+      - id: campus_schema_auth
+        claim: "Designed schema and implemented authentication and timetable flows"
+      - id: campus_query_tuning
+        claim: "Optimized database queries to lower page load"
+      - id: campus_api_structure
+        claim: "Structured API endpoints and separated frontend-backend concerns"
+      - id: campus_android_demo
+        claim: "Packaged the hybrid application via Cordova for an Android demo"
+      - id: campus_quality_hooks
+        claim: "Introduced basic lint and test hooks"
 
 education:
   - institution: "University of Canterbury"
