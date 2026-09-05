@@ -17,10 +17,10 @@
 \RequirePackage{tabularx}
 \RequirePackage{xcolor}
 
-% Portable font layer: XeLaTeX can use the widely available URW Nimbus Sans
-% without depending on optional distro-specific lato/raleway LaTeX packages.
+% Portable font layer: Latin Modern Sans is bundled with standard TeX Live and
+% BasicTeX installations, avoiding reliance on optional system font discovery.
 \RequirePackage{fontspec}
-\setsansfont{Nimbus Sans}
+\setsansfont{Latin Modern Sans}
 \renewcommand{\familydefault}{\sfdefault}
 
 % Preserve the original template macro names and font weights.
