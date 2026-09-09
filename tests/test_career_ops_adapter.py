@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +12,6 @@ from services.career_ops.adapter import (
     parse_score_summary,
     render_profile_as_cv,
 )
-
 
 SAMPLE_OUTPUT = """
 ## Block A — Role Summary
