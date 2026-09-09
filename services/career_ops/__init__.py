@@ -2,8 +2,8 @@
 
 from .adapter import (
     CareerOpsConfig,
-    CareerOpsEvaluation,
     CareerOpsError,
+    CareerOpsEvaluation,
     evaluate_job,
     parse_score_summary,
     render_profile_as_cv,
@@ -11,8 +11,8 @@ from .adapter import (
 
 __all__ = [
     "CareerOpsConfig",
-    "CareerOpsEvaluation",
     "CareerOpsError",
+    "CareerOpsEvaluation",
     "evaluate_job",
     "parse_score_summary",
     "render_profile_as_cv",
