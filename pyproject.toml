@@ -43,3 +43,4 @@ target-version = "py311"
 "services/ingestion/gmail_seek.py" = ["BLE001"]
 "services/ingestion/seek_job.py" = ["TRY004"]
 "services/pipeline/daily.py" = ["BLE001"]
+"services/career_ops/adapter.py" = ["UP037"]
